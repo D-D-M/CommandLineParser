@@ -1,0 +1,19 @@
+This is a skeleton for CS 111 Lab 1.
+
+Replace this README file with notes on your implementation.
+Mentions any special features or limitations.
+
+Project authors:
+David Meyer (ID: 603 810 259)
+Eskild Eriksen (ID: 703 904 846)
+
+We decided to implement the command stream in an array form (an array of commands), 
+with the idea that we'd eventually sort the array as if it were a binary tree, to account
+for the different priority levels of different commands. However, we ran out
+of time before we could finish that implementation.
+
+See you in office hours, because we sure as hell need it.
+
+
+
+
