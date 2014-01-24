@@ -2,12 +2,13 @@
 
 enum command_type
 {
-  // Might reorder the commands by priority, with 0 being highest priority
-  AND_COMMAND,         // A && B
+  // Reorder the commands by priority, with 0 being lowest priority
+  SIMPLE_COMMAND,      // a simple command, lowest priority
   SEQUENCE_COMMAND,    // A ; B
+  AND_COMMAND,         // A && B
   OR_COMMAND,          // A || B
   PIPE_COMMAND,        // A | B
-  SIMPLE_COMMAND,      // a simple command
+  IO_COMMAND,          // < or > // NEW ADDITION!
   SUBSHELL_COMMAND,    // ( A )
 };
 
