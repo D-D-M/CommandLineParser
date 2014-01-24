@@ -34,7 +34,7 @@
 
 struct command_stream
 {
-	command_t* carray; // array of commands 
+	command_t carray; // array of commands 
 
 	// To be used for checking syntax
 	int valid_syntax;
@@ -42,184 +42,72 @@ struct command_stream
 							  // desired result should therefore be 0
 };
 
-
-// This function picks up from where the stream left off, gets the next word in line
-// (only called when we have reason to believe that there is a word next in line), and
-// then adds it to the wordbuffer.
-
-char* read_word(int (*get_next_byte) (void *), void *get_next_byte_argument,
-						char byte, int wordcap, int wordbuffercap, char** wordbuffer, int* j)
+// This function determines if a char c can be part of a word, 
+// according to our shell grammar/syntax.
+int is_word(const char* c)
 {
-	int i;
-	char* word = checked_malloc(sizeof(char)*wordcap); // holds an individual word
-	i = 0;
-	while (isalnum(byte) || byte == '!' || byte == '%' || byte == '+' || byte == ',' ||
-		  byte == '-' || byte == '.' || byte == '/' || byte == ':' || byte == '@' ||
-		  byte == '^' || byte == '_')
-	{
-		if (i >= wordcap-1) // Reallocate if not enough room
-		{
-			wordcap = wordcap * 2;
-			word = checked_realloc(word, wordcap);
-		}
-		word[i] = byte;
-		byte = get_next_byte(get_next_byte_argument);
-		i++;
-	}
-	// add the word to the wordbuffer
-	word[i] = '\0'; // important to add the null terminator first
-	if (*j >= wordbuffercap-1) // Reallocate if not enough room
-	{
-		wordbuffercap = wordbuffercap * 2;
-		wordbuffer = checked_realloc(wordbuffer, wordbuffercap);
-	}
-	wordbuffer[*j] = word;
-	*j++;
-	byte = get_next_byte(get_next_byte_argument);
-	return word;
+	if (isalnum(*c) || *c == '!' || *c == '%' || *c == '+' || *c == ',' || *c == '-' || 
+		  *c == '.' || *c == '/' || *c == ':' || *c == '@' || *c == '^' || *c == '_')
+		return 1; // TRUE, this char can be part of a word
+	else
+		return 0; // FALSE, this car can NOT be part of a word
 }
 
-
+// This time, our implementation will be to read one line at a time
 command_stream_t make_command_stream (int (*get_next_byte) (void *),
 			  void *get_next_byte_argument)
 {
   /* FIXME: Replace this with your implementation.  You may need to
 	  add auxiliary functions and otherwise modify the source code.
 	  You can also use external functions defined in the GNU C Library.  */
-   char byte;
-   char next;
-   int i;
-   int* j = 0;
-   *j=0;
-   int wordlength;
-   int count = 0;
+    
+    int i; // for 'for' loops
+    
+    // Allocate space for the command stream
+    // NOTE: A command_stream_t is a POINTER to a struct command_stream
+    command_stream_t stream = (command_stream_t)checked_malloc(sizeof(struct command_stream));
+    
+    // A command_stream_t has an array pointer, so we're going to need to malloc that as well
+    size_t commandcap = 100; // Assume a file will have no more than 100 commands
+    int cmd_count = 0; // Counter for the number of commands in one file
+    stream->carray = (command_t)checked_malloc(sizeof(struct command)*commandcap);
+	stream->valid_syntax = 1;
+	// stream->num_parentheses = 0;
 
-   int wordcap = 8; // arbitrary guess
-   int wordbuffercap = 4;
-  
-   // Using the checked_malloc function provided. If it doesn't work, check your own malloc.
-   command_stream_t stream = (command_stream_t)checked_malloc(sizeof(struct command_stream));
-   stream->valid_syntax = 1; // TRUE
-   
-   char** wordbuffer = checked_malloc(sizeof(char*)*wordbuffercap); // holds the words that come before a command
+	int line_cap = 200; // Assume a line will have no more than 200 characters
+	int line_count = 0; // Counter for the number of characters in one line
+	char* line = (char *)checked_malloc(sizeof(char)*line_count);
 
-   byte = get_next_byte(get_next_byte_argument); 
-  
-	while( byte != EOF )
-  	{
-		// ! % + , - . / : @ ^ _ are allowed as well
-		if (isalnum(byte) || byte == '!' || byte == '%' || byte == '+' || byte == ',' ||
-				  byte == '-' || byte == '.' || byte == '/' || byte == ':' || byte == '@' ||
-				  byte == '^' || byte == '_')
-		{
-			char* word = read_word(get_next_byte, get_next_byte_argument,
-						byte, wordcap, wordbuffercap, wordbuffer, j);
-			// put the word on the word stack
-		}
-		else
-		{
-			// EVERY COMMAND will need to reset the j variable after 
-			// assimilating its contents into the command type
-			switch(byte)
-			{
-				// WHITESPACE
-				case ' ':
-					byte = get_next_byte(get_next_byte_argument);
-					*j = 0;
-					count++;
-					break;
-				case ';':
-					byte = get_next_byte(get_next_byte_argument);
-					count++;
-					*j = 0;
-					break;
-				case '<':
-					stream->carray[count]->type = SIMPLE_COMMAND;
-					stream->carray[count]->input = read_word(get_next_byte, get_next_byte_argument,
-						byte, wordcap, wordbuffercap, wordbuffer, j); // read_word() to the right of <
-					stream->carray[count]->output = NULL;
-					stream->carray[count]->u.word = wordbuffer;
-					count++;
-					*j = 0;
-					break;
+    char byte = get_next_byte(get_next_byte_argument);
+    // As long as we haven't reached the end of the file, keep getting the next character
+    while (byte != EOF)
+    {
+    	while (byte != '\n')
+    	{
+    		// Doesn't matter what the byte is, just put it in the line
+    		line[line_count] = byte;
+    		line_count++;
 
-				case '>':
-					stream->carray[count]->type = SIMPLE_COMMAND;
-					stream->carray[count]->output = read_word(get_next_byte, get_next_byte_argument,
-						byte, wordcap, wordbuffercap, wordbuffer, j); // read_word() to the right of >
-					stream->carray[count]->input = NULL;
-					stream->carray[count]->u.word = wordbuffer;
-					*j = 0;
-					count++;
-					break;
+    		// If a line is longer than we expect, update its capacity and reallocate.
+    		if (line_count >= line_cap)
+    		{
+    			line_cap *= 2;
+    			line = checked_realloc(line, line_cap);
+    		}
+    		byte = get_next_byte(get_next_byte_argument);
+    	}
+    	// Exiting this loop means that byte = newline, and we can begin with:
+    	// 1. If line_count != 0,
+    	// 2. Try parsing the command
+    	// 3. Then put that command into 'stream[cmd_count]'
+    	// 4. cmd_count++;
 
+    	// Reset everything
+    	line_count = 0;
+    	// If we haven't done so already, update byte
+    	byte = get_next_byte(get_next_byte_argument);
+    }
 
-				// AMPERSAND SYMBOL
-				case '&':
-					next = get_next_byte(get_next_byte_argument);
-					if (next == '&')
-					{
-						stream->carray[count]->type = AND_COMMAND;
-						stream->carray[count]->input = NULL;
-						stream->carray[count]->output = NULL;
-						// if (count == 0) // can we just assume invalid syntax?
-						// stream->carray[count]->u.command = ;
-						
-					}
-					else
-					{
-						stream->valid_syntax = 0; // set invalid syntax
-					}
-					*j = 0;
-					count++;
-					break;
-				// PIPE SYMBOL
-				case '|':
-					next = get_next_byte(get_next_byte_argument);
-					if (next == '|')
-					{
-						stream->carray[count]->type = OR_COMMAND;
-						// stream->carray[count]->input = ;
-						// stream->carray[count]->output = ;
-						// stream->carray[count]->u.command = ;
-				
-					}
-					else if (next == ' ')
-					{
-						stream->carray[count]->type = PIPE_COMMAND;
-						// stream->carray[count]->input = ;
-						// stream->carray[count]->output = ;
-						// stream->carray[count]->u.command = ;
-						
-					}
-					else
-					{
-						stream->valid_syntax = 0; // set invalid syntax
-					}
-					*j = 0;
-					count++;
-					break;
-				case '\n':
-					// byte = get_next_byte(get_next_byte_argument);
-					*j = 0;
-					count++;
-					break;
-				case '(':
-					byte = get_next_byte(get_next_byte_argument);
-					*j = 0;
-					count++;
-					break;
-				case ')':
-					byte = get_next_byte(get_next_byte_argument);
-					*j = 0;
-					count++;
-					break;
-			}
-			
-		}
-
-	}
-	// error (1, 0, "command reading not yet implemented");
 	return 0;
 }
 
