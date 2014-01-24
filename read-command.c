@@ -111,19 +111,20 @@ command_stream_t make_command_stream (int (*get_next_byte) (void *),
     		// commands off of that one.
 
     		// Make a variable to keep track of the highest priority command in 'line'
-    		command_t highest_priority = SIMPLE_COMMAND; // start as low as possible, work your way up from there
+    		enum command_type highest_priority = SIMPLE_COMMAND; // start as low as possible, work your way up from there
     		// This for loop is just for FINDING the highest priority command in the line
     		for (i = 0; i < line_count; i++)
     		{
-    			if (is_cmd(line[i])) // if it's a command...
+    			if (is_cmd(&line[i])) // if it's a command...
     			{
     				switch (line[i])
     				{
-    					case ';':
+    					case ';': {
     						if (highest_priority < SEQUENCE_COMMAND)
     							highest_priority = SEQUENCE_COMMAND;
     						break;
-    					case '&':
+                        }
+    					case '&': {
     						// Need to check that the next char is also &
     						char next = get_next_byte(get_next_byte_argument);
     						if (next == '&')
@@ -138,19 +139,18 @@ command_stream_t make_command_stream (int (*get_next_byte) (void *),
     							// Who knows, maybe this is still valid syntax
     						}
     						break;
-    					case '|':
+                        }
+    					case '|': {
     						char next = get_next_byte(get_next_byte_argument);
-    						if (next == ' ' || is_word(next)) // PIPE
+    						if (next == ' ' || is_word(&next)) // PIPE
     						{
     							if (highest_priority < PIPE_COMMAND)
     								highest_priority = PIPE_COMMAND;
-    							// break;	
     						}
-    						else if (next = '|') // OR
+    						else if (next == '|') // OR
     						{
                                 if (highest_priority < OR_COMMAND)
                                     highest_priority = OR_COMMAND;
-                                // break;
     						}
     						else
     						{
@@ -158,23 +158,27 @@ command_stream_t make_command_stream (int (*get_next_byte) (void *),
                                 // Pretty sure this is also invalid syntax.
     						}
     						break;
+                        }
+                        // Both < and > have the same handling
                         case '<':
-                        case '>':
+                        case '>': {
                             if (highest_priority < IO_COMMAND)
                                 highest_priority = IO_COMMAND;
                             break;
-                            
+                        }   
                         // For a subshell, it might be a good idea to just search the
                         // line for a '(' explicitly, and then decide what we need to do
                         // about it from there. Might have a helper function to evaluate
                         // subshell bullshit.
-                        case '(':
+                        case '(': {
                             if (highest_priority < SUBSHELL_COMMAND)
                                 highest_priority = SUBSHELL_COMMAND;
                             break;
+                        }
     				}
     			}
     		}
+            fprintf(stdout, "Highest priority is %d\n", highest_priority);
     	}
     	// Exiting this loop means that byte = newline, and we can begin with:
     	// 1. If line_count != 0,
