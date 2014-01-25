@@ -31,6 +31,9 @@ struct command_stream
 {
 	command_t carray; // array of commands 
 
+    int lines; // number of lines in a stream
+    int* hp; // highest priority in each line?? hp[0] = 5; hp[1] = 3;
+
 	// To be used for checking syntax
 	int valid_syntax;
 	int num_parentheses; // balanced open and closed parentheses, ++ if ( and -- if )
@@ -51,13 +54,95 @@ int is_word(const char* c)
 // This function determines if a char c can is part of a command
 int is_cmd(const char* c)
 {
+    /*
 	if (*c == '|' || *c == '&' || *c == '(' || *c == ')' || *c == ';' || 
 		*c == '<' || *c == '>')
-		return 1; // TRUE, this char is a command
+    */
+	// Ignoring redirection (possibly pipes and subshells too) this time
+    if (*c == '|' || *c == '&' || *c == '(' || *c == ')' || *c == ';')
+    	return 1; // TRUE, this char is a command
 	else
 		return 0; // FALSE, this char is NOT a command
 }
+/*
+enum command_type find_hp(const char* line, int size, int (*get_next_byte) (void *),
+              void *get_next_byte_argument)
+{
+    int i;
+    // Make a variable to keep track of the highest priority command in 'line'
+    enum command_type highest_priority = SIMPLE_COMMAND; // start as low as possible, work your way up from there
 
+    // This for loop is just for FINDING the highest priority command in the line
+    for (i = 0; i < size; i++)
+    {
+        if (is_cmd(&line[i])) // if it's a command...
+        {
+            switch (line[i])
+            {
+                case ';': {
+                    if (highest_priority < SEQUENCE_COMMAND)
+                        highest_priority = SEQUENCE_COMMAND;
+                    break;
+                }
+                case '&': {
+                    // Need to check that the next char is also &
+                    char next = get_next_byte(get_next_byte_argument);
+                    if (next == '&')
+                    {
+                        if (highest_priority < AND_COMMAND)
+                            highest_priority = AND_COMMAND;
+                    }
+                    else
+                    {
+                        // Not this function's job to worry about syntax
+                        // stream->valid_syntax = 0; // invalid syntax
+                        // Perhaps a goto statement?
+                        // Who knows, maybe this is still valid syntax
+                    }
+                    break;
+                }
+                case '|': {
+                    char next = get_next_byte(get_next_byte_argument);
+                    if (next == ' ' || is_word(&next)) // PIPE
+                    {
+                        if (highest_priority < PIPE_COMMAND)
+                            highest_priority = PIPE_COMMAND;
+                    }
+                    else if (next == '|') // OR
+                    {
+                        if (highest_priority < OR_COMMAND)
+                            highest_priority = OR_COMMAND;
+                    }
+                    else
+                    {
+                        // It's not this function's job to worry about syntax
+                        // stream->valid_syntax = 0;
+                        // Pretty sure this is also invalid syntax.
+                    }
+                    break;
+                }
+                // Both < and > have the same handling
+                case '<':
+                case '>': {
+                    if (highest_priority < IO_COMMAND)
+                        highest_priority = IO_COMMAND;
+                    break;
+                }   
+                // For a subshell, it might be a good idea to just search the
+                // line for a '(' explicitly, and then decide what we need to do
+                // about it from there. Might have a helper function to evaluate
+                // subshell bullshit.
+                case '(': {
+                    if (highest_priority < SUBSHELL_COMMAND)
+                        highest_priority = SUBSHELL_COMMAND;
+                    break;
+                }
+            }
+        }
+    }
+    return highest_priority;
+}
+*/
 // This time, our implementation will be to read one line at a time
 command_stream_t make_command_stream (int (*get_next_byte) (void *),
 			  void *get_next_byte_argument)
@@ -108,84 +193,86 @@ command_stream_t make_command_stream (int (*get_next_byte) (void *),
     	{
     		// First good idea would be to iterate through the array to see what
     		// our highest priority command is, and then base all of the other
-    		// commands off of that one.
+    		// commands off of that one. /BAD
 
-    		// Make a variable to keep track of the highest priority command in 'line'
-    		enum command_type highest_priority = SIMPLE_COMMAND; // start as low as possible, work your way up from there
-    		// This for loop is just for FINDING the highest priority command in the line
-    		for (i = 0; i < line_count; i++)
-    		{
-    			if (is_cmd(&line[i])) // if it's a command...
-    			{
-    				switch (line[i])
-    				{
-    					case ';': {
-    						if (highest_priority < SEQUENCE_COMMAND)
-    							highest_priority = SEQUENCE_COMMAND;
-    						break;
-                        }
-    					case '&': {
-    						// Need to check that the next char is also &
-    						char next = get_next_byte(get_next_byte_argument);
-    						if (next == '&')
-    						{
-    							if (highest_priority < AND_COMMAND)
-    								highest_priority = AND_COMMAND;
-    						}
-    						else
-    						{
-    							stream->valid_syntax = 0; // invalid syntax
-    							// Perhaps a goto statement?
-    							// Who knows, maybe this is still valid syntax
-    						}
-    						break;
-                        }
-    					case '|': {
-    						char next = get_next_byte(get_next_byte_argument);
-    						if (next == ' ' || is_word(&next)) // PIPE
-    						{
-    							if (highest_priority < PIPE_COMMAND)
-    								highest_priority = PIPE_COMMAND;
-    						}
-    						else if (next == '|') // OR
-    						{
-                                if (highest_priority < OR_COMMAND)
-                                    highest_priority = OR_COMMAND;
-    						}
-    						else
-    						{
-    							stream->valid_syntax = 0;
-                                // Pretty sure this is also invalid syntax.
-    						}
-    						break;
-                        }
-                        // Both < and > have the same handling
-                        case '<':
-                        case '>': {
-                            if (highest_priority < IO_COMMAND)
-                                highest_priority = IO_COMMAND;
-                            break;
-                        }   
-                        // For a subshell, it might be a good idea to just search the
-                        // line for a '(' explicitly, and then decide what we need to do
-                        // about it from there. Might have a helper function to evaluate
-                        // subshell bullshit.
-                        case '(': {
-                            if (highest_priority < SUBSHELL_COMMAND)
-                                highest_priority = SUBSHELL_COMMAND;
-                            break;
-                        }
-    				}
-    			}
-    		}
-            fprintf(stdout, "Highest priority is %d\n", highest_priority);
-    	}
-    	// Exiting this loop means that byte = newline, and we can begin with:
+            // enum command_type hp = find_hp(&line[0], line_count, get_next_byte, get_next_byte_argument);
+            // fprintf(stdout, "Highest priority is %d\n", hp);
+            int pos_next_cmd;
+            // Find the position of the next command
+            for (i = 0; i < line_count; i++)
+            {
+                if (is_cmd(&line[i]))
+                {
+                    pos_next_cmd = i;
+                    break;
+                }
+            }
+            fprintf(stdout, "Position of next command is %d\n", pos_next_cmd);
+            // Read every word up to that point
+            int word_cap = 10;
+            int letter_cap = 20;
+            char** wordarray = (char**)checked_malloc(sizeof(char*) * word_cap);
+            
+            // We need to read words up until the first non-simple command
+            int array_index = 0; // iterator for the wordarray
+            i = 0; // FORloops ONLY
+            int word_index = 0;
+            // Put individual words into the wordarray
+            while (i < pos_next_cmd)
+            {
+                char* word = (char*)checked_malloc(sizeof(char) * letter_cap);
+                printf("Begin loop with i = %d\n", i);
+                word_index = 0;
+                while (line[i] != ' ')
+                {
+                    word[word_index] = line[i];
+                    // printf("letter %d is %c\n", i, word[word_index]);
+                    i++;
+                    word_index++;
+                    if (i >= letter_cap) // Make sure it doesn't grow too big
+                    {
+                        letter_cap *= 2;
+                        word = (char*)checked_realloc(word, letter_cap);
+                    }
+                }
+                word[word_index] = '\0'; // Add null terminator
+                i++;
+                
+                wordarray[array_index] = word;
+                fprintf(stdout, "Word #%d is %s\n", array_index, wordarray[array_index]);
+                array_index++;
+                if (array_index >= word_cap)
+                {
+                    word_cap *= 2;
+                    wordarray = (char**)checked_realloc(wordarray, word_cap);
+                }
+                // i++;
+                printf("End loop with i = %d\n", i);
+            }
+            
+            // Testing
+            printf("testing value of array_index = %d\n", array_index);
+            // printf("wordarray[%d] is %s\n", 0, wordarray[0]);
+            
+            for (i = 0; i < array_index; i++)
+            {
+                fprintf(stdout, "%s\n", wordarray[i]);
+            }
+            
+
+        }
+        // Parse SIMPLE commands first, because that takes care of the IO stuff
+        // THEN, we can start ordering these simple commands based on what
+    	
+        // Exiting this loop means that byte = newline, and we can begin with:
     	// 1. If line_count != 0,
     	// 2. Try parsing the command
     	// 3. Then put that command into 'stream[cmd_count]'
     	// 4. cmd_count++;
 
+        // Testing
+        // for (i = 0; i < line_count; i++)
+                // fprintf(stdout, "%c\n", line[i]);
     	// Reset everything
     	line_count = 0;
     	// If we haven't done so already, update byte

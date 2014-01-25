@@ -3,13 +3,13 @@
 enum command_type
 {
   // Reorder the commands by priority, with 0 being lowest priority
-  SIMPLE_COMMAND,      // a simple command, lowest priority
-  SEQUENCE_COMMAND,    // A ; B
-  AND_COMMAND,         // A && B
-  OR_COMMAND,          // A || B
-  PIPE_COMMAND,        // A | B
-  IO_COMMAND,          // < or > // NEW ADDITION!
-  SUBSHELL_COMMAND,    // ( A )
+  SIMPLE_COMMAND,      // 0:   a simple command, lowest priority
+  SEQUENCE_COMMAND,    // 1:   A ; B
+  AND_COMMAND,         // 2:   A && B
+  OR_COMMAND,          // 3:   A || B
+  PIPE_COMMAND,        // 4:   A | B
+  IO_COMMAND,          // 5:   < or > // NEW ADDITION!
+  SUBSHELL_COMMAND,    // 6:   ( A )
 };
 
 // Data associated with a command.
