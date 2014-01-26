@@ -3,6 +3,7 @@
 typedef struct command* command_t;
 typedef struct command_stream* command_stream_t;
 // typedef struct token* token_t;
+// typedef struct token_stream* token_stream_t;
 
 /* Create a command stream from LABEL, GETBYTE, and ARG.  A reader of
    the command stream will invoke GETBYTE (ARG) to get the next byte.
@@ -24,3 +25,29 @@ void execute_command (command_t, int);
 /* Return the exit status of a command, which must have previously been executed.
    Wait for the command, if it is not already finished.  */
 int command_status (command_t);
+
+
+// POTENTIAL PARSE CODE
+/*
+    int wordscap = 10;
+    int charscap = 20;
+    int w = 0;
+    int wa = 0;
+    char** words = (char**)checked_malloc(sizeof(char*)*wordscap);
+    for (; c < size; c++)
+    {
+        char* word = (char*)checked_malloc(sizeof(char)*charscap);
+        while(is_word(&line[c]))
+        {
+            word[w] = line[c];
+            c++; w++;
+        }
+        words[wa] = word;
+        w = 0; // reset the w
+
+        // See what the next char is (why wasn't it a word)
+        // if (line[c] == '<' || line[c] == '>')
+        
+
+    }
+*/
