@@ -63,15 +63,16 @@ int is_cmd(const char* c)
 */
 enum token_type
 {
+    // We might need more token types, not sure yet.
     WORD,
-    LOGICAND,
-    LOGICOR, // && and ||
-    SUBSHELL,
-    COMMENT,
-    IO,
-    PIPE,
-    NEWLINE,
-    SEMICOLON,
+    LOGICAND,   //  &&
+    LOGICOR,    //  ||
+    SUBSHELL,   //  ( )
+    COMMENT,    //  #
+    IO,         //  < >
+    PIPE,       //  |
+    NEWLINE,    //  \n
+    SEMICOLON,  //  ;
 };
 typedef struct
 {
@@ -245,7 +246,20 @@ command_stream_t make_command_stream (int (*get_next_byte) (void *),
         // Now we have to parse them into separate commands, from left to right.
         // THEN, once they're "commanndified", then we can order them on priority.
 /////////////////////////////////////////////////////////////////////////////////
+// TOKENIZER
+/////////////////////////////////////////////////////////////////////////////////
         // 1. Turn this array of chars into an array of TOKENS.
+        //
+        // Reason: It's way easier to parse an array of tokens, because it consolidates this:
+        //  _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _      
+        //  c a t   <   a   | |   l s   f o o   >   b  = 21 elements, each being a char
+        //
+        // into THIS:
+        // ___  _  _  __  __  ___  _  _
+        // cat  <  a  ||  ls  foo  >  b  = 8 elements, each of which is a meaningful token
+        //
+        // Shit yeah.
+        
         token_stream* ts;
         ts = tokenize(line, char_count);
 
@@ -259,168 +273,18 @@ command_stream_t make_command_stream (int (*get_next_byte) (void *),
                 printf("%c\n", ts->tokarray[i].data.symbol);
         }
 
+
+
 /////////////////////////////////////////////////////////////////////////////////
-/*
- 
-
-    	if (line_count != 0) // Parse the command if there's a command to parse.
-    	{
-    		// First good idea would be to iterate through the array to see what
-    		// our highest priority command is, and then base all of the other
-    		// commands off of that one. /BAD
-
-            // enum command_type hp = find_hp(&line[0], line_count, get_next_byte, get_next_byte_argument);
-            // fprintf(stdout, "Highest priority is %d\n", hp);
-            int pos_next_cmd;
-            // Find the position of the next command
-            for (; cmd_it < line_count; cmd_it++)
-            {
-                if (is_cmd(&line[cmd_it])) // Don't forget about pipes
-                {
-                    if (line[cmd_it] == '|' && line[cmd_it+1] != '|')
-                        // if we see a pipe, but not another pipe immediately after it
-                        // then do nothing
-                        ;
-                    else
-                    {
-                        pos_next_cmd = cmd_it;
-                        break;
-                    }
-                }
-            }
-            // fprintf(stdout, "Position of next command is %d\n", pos_next_cmd);
-            // Read every word up to that point
-            int word_cap = 10;
-            int letter_cap = 20;
-            char** wordarray = (char**)checked_malloc(sizeof(char*) * word_cap);
-            
-            // We need to read words up until the first non-simple command
-            int array_index = 0; // iterator for the wordarray
-            i = 0;
-            int word_index = 0;
-            // Put individual words into the wordarray
-            while (i < pos_next_cmd)
-            {
-                char* word = (char*)checked_malloc(sizeof(char) * letter_cap);
-                printf("Begin loop with i = %d\n", i);
-                word_index = 0;
-                while (line[i] != ' ')
-                {
-                    word[word_index] = line[i];
-                    // printf("letter %d is %c\n", i, word[word_index]);
-                    i++;
-                    word_index++;
-                    if (i >= letter_cap) // Make sure it doesn't grow too big
-                    {
-                        letter_cap *= 2;
-                        word = (char*)checked_realloc(word, letter_cap);
-                    }
-                }
-                word[word_index] = '\0'; // Add null terminator
-                i++;
-                
-                wordarray[array_index] = word;
-                fprintf(stdout, "Word #%d is %s\n", array_index, wordarray[array_index]);
-                array_index++;
-                if (array_index >= word_cap)
-                {
-                    word_cap *= 2;
-                    wordarray = (char**)checked_realloc(wordarray, word_cap);
-                }
-                // i++;
-                printf("End loop with i = %d\n", i);
-            }
-            
-            // TESTING
-            for (i = 0; i < array_index; i++)
-                fprintf(stdout, "%s\n", wordarray[i]);
-
-            // Now that we have a word array with IO redirections built in,
-            // allocate a command, and put it in the next available slot of carray
-            command_t nextcmd = (command_t)checked_malloc(sizeof(struct command));
-            nextcmd->type = SIMPLE_COMMAND; // might be premature
-            // Fill out the structure
-            // Case 1a: Search for location of <
-            int searchin = 0;
-            int inpos = -1; // pretending that there will only be 1 < in a line
-            for ( ; searchin < array_index; searchin++)
-            {
-                if (*wordarray[searchin] == '<')
-                {
-                    inpos == searchin;
-                    break;
-                }
-            }
-            // Case 1b: Search for location of >
-            int searchout = 0;
-            int outpos = -1; // pretendoutg that there will only be 1 < out a line
-            for ( ; searchout < array_index; searchout++)
-            {
-                if (*wordarray[searchout] == '>')
-                {
-                    outpos == searchout;
-                    break;
-                }
-            }
-            // Case 2: Search for a pipe
-            int searchpipe = 0;
-            int pipepos = -1; // pretend that there will only be 1 < pipe a line
-            for ( ; searchpipe < array_index; searchpipe++)
-            {
-                if (*wordarray[searchpipe] == '|')
-                {
-                    pipepos == searchpipe;
-                    break;
-                }
-            }
-            if (inpos > 0) // because bad syntax to have '$ < a'
-            {
-                nextcmd->input = wordarray[inpos+1];
-                nextcmd->output = NULL;
-                int left = 0;
-                for ( ; left < inpos; left++)
-                {
-                    nextcmd->word[left] = wordarray[left];
-                }
-                nextcmd->word[inpos] = NULL;
-                stream->carray[strm_index] = nextcmd;
-            }
-            else if (outpos > 0)
-            {
-                nextcmd->input = NULL;
-                nextcmd->out = wordarray[outpos+1];
-                int left = 0;
-                for (; left < outpos; left++)
-                {
-                    nextcmd->word[left] = wordarray[left]
-                }
-                nextcmd->word[outpos] = NULL;
-                stream->carray[strm_index] = nextcmd;
-            }
-            
-
-            // see what's in posnextcmd (if there is anything there at all) 
-            // and put IT into a command while we're at it
+// PARSER
+/////////////////////////////////////////////////////////////////////////////////
+        // 2. Now that we have an array of tokens, it'll be way easier to parse those
+        //    tokens into actual commands.
 
 
-        }
-        // Parse SIMPLE commands first, because that takes care of the IO stuff
-        // THEN, we can start ordering these simple commands based on what
-    	
-        // Exiting this loop means that byte = newline, and we can begin with:
-    	// 1. If line_count != 0,
-    	// 2. Try parsing the command
-    	// 3. Then put that command into 'stream[cmd_count]'
-    	// 4. cmd_count++;
 
-        // Testing
-        // for (i = 0; i < line_count; i++)
-                // fprintf(stdout, "%c\n", line[i]);
-    	// Reset everything
-    	line_count = 0;
-    	// If we haven't done so already, update byte
-    	byte = get_next_byte(get_next_byte_argument);
-    */
+/////////////////////////////////////////////////////////////////////////////////
+        // 3. Look at main.c to see how read_command_stream is supposed to be implemented
 
     }
 
