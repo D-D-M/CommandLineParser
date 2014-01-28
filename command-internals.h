@@ -16,7 +16,7 @@ enum command_type
 struct command
 {
   enum command_type type;
-  int priority;
+  // int priority;
 
   // Exit status, or -1 if not known (e.g., because it has not exited yet).
   int status;
