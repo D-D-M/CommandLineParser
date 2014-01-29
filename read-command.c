@@ -38,6 +38,10 @@ struct command_stream
     int numcmds; // number of commands in a stream
     // int* hp; // highest priority in each line?? hp[0] = 5; hp[1] = 3;
 
+    // For cases like
+    // a<b>c|d<e>f|g<h>i
+    // we're going to need to know how many <'s >'s and |'s there are AHEAD of time
+
     // To be used for checking syntax
     int valid_syntax;
     int num_parentheses; // balanced open and closed parentheses, ++ if ( and -- if )
@@ -66,6 +70,7 @@ enum token_type
     PIPE,
     NEWLINE,
     SEMICOLON,
+    //EOF,
 };
 typedef struct
 {
@@ -320,7 +325,6 @@ struct command* parse(token_stream *ts, cmd_stack_struct* cmdstack, tok_stack_st
     // cmdstack.con = (struct command*)checked_malloc(sizeof(struct command)*(ts->size));
     // cmdstack.top = -1;  // EMPTY
     
-    int pi = 0;         // postfix iterator 
     // struct command *postfix = (struct command*)checked_malloc(sizeof(struct command)*(ts->size));
 
     // token t = &ts->tokarray;
@@ -331,6 +335,8 @@ struct command* parse(token_stream *ts, cmd_stack_struct* cmdstack, tok_stack_st
         // PSEUDOCODE begins here
         //
         struct command* cmd = (struct command*)checked_malloc(sizeof(struct command));
+        // cmd->status = 0;
+        //
         if (is_simple(&tarray[ti]))
         {
             int z = 0;
@@ -341,6 +347,7 @@ struct command* parse(token_stream *ts, cmd_stack_struct* cmdstack, tok_stack_st
                 cmd->u.word[z] = tarray[ti].data.word;
                 ti++; z++;
             }
+            // INPUT < SYMBOL
             if (tarray[ti].type == I)
             {
                 if (tarray[ti+1].type == WORD)
@@ -348,7 +355,9 @@ struct command* parse(token_stream *ts, cmd_stack_struct* cmdstack, tok_stack_st
                     cmd->input = tarray[ti+1].data.word;
                     cmd->output = NULL;
                     ti++;
+                    // ti+=2;
                     cmd->status = 1; // complete command
+                    // Within the input here, let's do another for loop until we find an output
                 }
                 else
                 {
@@ -358,10 +367,21 @@ struct command* parse(token_stream *ts, cmd_stack_struct* cmdstack, tok_stack_st
                         cmd->status = -1; // error (we think) might just return NULL;
                 }
             }
+            // OUTPUT > SYMBOL
             else if (tarray[ti].type == O)
             {
                 if (tarray[ti+1].type == WORD)
                 {
+                    // // Only set input to NULL if cmd->status is 0, if it's incomplete
+                    // if (cmd->status == 0)
+                    // {
+                    //     cmd->input = NULL;
+                    // }
+                    // else // a b<c > d
+                    // {
+                    //     // Input has already been set by the input operator above, so we're good
+                    //     ;
+                    // }
                     cmd->input = NULL;
                     cmd->output = tarray[ti+1].data.word;
                     ti++;
@@ -375,23 +395,42 @@ struct command* parse(token_stream *ts, cmd_stack_struct* cmdstack, tok_stack_st
                         cmd->status = -1; // error (we think)
                 }
             }
+            else if (tarray[ti].type == NEWLINE || tarray[ti].type == SEMICOLON)
+            {
+                cmd->status = 1;
+                ti--;
+            }
+            else
+                ti--;
             cmd->type = SIMPLE_COMMAND;
             // Now we either have a simple command with a status
             push_cmd(cmdstack, *cmd);
             printf("Stack push_cmd!\n");
+            // Free that command
+            // free(cmd);
         }
         else // if (is_op(&ts->tokarray[ti]))     // is an operator: &&, ||, |, ;
         {
             // If the opstack is empty, just push this operator onto it, badaboom
             if (opstack->top == -1)
             {
+                printf("Pushing op at position %d !\n", ti);
                 push_tok(opstack, tarray[ti]);
             }
             // If the precedence of the operator on the opstack is greater than the precedence
             // of the token you've just run into, you need to start linking commands up.
-            else if (precedence(opstack->con[opstack->top]) >= precedence(tarray[ti]))
+            else if (precedence(opstack->con[opstack->top]) >= precedence(tarray[ti]) || ti >= maxsize)
             {
-                struct command lr[2];  // left and right commands to be joined // FISHYYYY
+                // What we had before...
+                // struct command lr[2];  // left and right commands to be joined // FISHYYYY
+                // struct command* lr[2];  // left and right commands to be joined // FISHYYYY
+                
+                // But now I want to make sure I malloc properly, I want to have control
+                // struct command** lr = (struct command**)checked_malloc(sizeof(struct command*)*2); // 2, for L and R
+                
+                struct command* L = (struct command*)checked_malloc(sizeof(struct command));
+                struct command* R = (struct command*)checked_malloc(sizeof(struct command));
+
                 switch(opstack->con[opstack->top].type)
                 {
                     case PIPE:
@@ -421,44 +460,54 @@ struct command* parse(token_stream *ts, cmd_stack_struct* cmdstack, tok_stack_st
                 cmd->output = NULL;
                 cmd->status = 0; // Command status should be "waiting" until we know that we have 
                                 // two commands on the stack, ready to be joined
-                int j = 0;
-                while (cmdstack->top != -1 && j < 2) // As long as there's stuff in cmdstack, and less than 2...
+                // If the stack is NOT empty
+                if (cmdstack->top != -1)
                 {
-                    lr[1-j] = pop_cmd(cmdstack); // We use [1-j] to flip the order that the commands are joined
-                    j++;
+                    // Set the value of the command
+                    *R = pop_cmd(cmdstack);
+                    if (cmdstack->top != -1)
+                    {
+                        *L = pop_cmd(cmdstack);
+                        cmd->u.command[0] = L;
+                        cmd->u.command[1] = R;
+                        cmd->status = 1; // Not waiting anymore
+                    }
+                    else
+                    {
+                        cmd->u.command[0] = R; // still waiting
+                    }
                 }
-                printf("j is %d\n", j);
-                if (j == 2) // If the loop ran twice, we have a LHS and a RHS
+                else // The stack is empty
                 {
-                    cmd->status = 1; // We have a complete command
-                    cmd->u.command[0] = &lr[0];
-                    cmd->u.command[1] = &lr[1];
+                    printf("operator with no subcommands\n");
+                    cmd->status = -1; // error
                 }
-                else if (j == 1) // We have either 1 command or 0 commands.
-                {
-                    cmd->u.command[0] = &lr[1];
-                }
-                else
-                {
-                    printf("what the fuck\n");
-                    // return NULL; // j was zero => there was nothing on the cmdstack
-                }
+
                 push_cmd(cmdstack, *cmd);
+                // free(cmd); // Free the command now that you've pushed its value onto the cmdstack
                 pop_tok(opstack);
                 printf("tarray[%d] type is %d\n", ti, tarray[ti].type);
+                ti = ti-1;
+                /*
                 if (tarray[ti].type == NEWLINE || tarray[ti].type == SEMICOLON)
-                    ti++; // do nothing
+                    ; // Do nothing
                 else
                     ti--;   // Decrement - This makes sense, don't make Eskild explain it to you again.                                  
+                */
             }
             else
-            { 
+            {
+                printf("Pushing op at position %d !\n", ti); 
                 push_tok(opstack, tarray[ti]);
             }
         }
     }
 
     *root = pop_cmd(cmdstack);
+    // Test what the value of root is before we return it
+    printf("root type is %d\n",root->type);
+    printf("root status is %d\n", root->status);
+    // if (root->)
     // printf("Is root null? Check: %p\n", root);
     return root;
 }
@@ -516,11 +565,6 @@ command_stream_t make_command_stream (int (*get_next_byte) (void *),
         byte = get_next_byte(get_next_byte_argument);
         if (byte == EOF)
             break;
-        // if (byte == '\n')
-        // {
-        //     byte = get_next_byte(get_next_byte_argument);
-        //     break;
-        // }
         line[char_count] = '\n';
         char_count++;
         // // Testing: print the line
@@ -536,7 +580,7 @@ command_stream_t make_command_stream (int (*get_next_byte) (void *),
         // 1. Turn this array of chars into an array of TOKENS.
         token_stream* ts;
         printf("Calling tokenize now\n");
-        ts = tokenize(line, char_count);
+        ts = tokenize(line, char_count); // TOKENIZE!!!!!!!!!!
         printf("Success!\n");
         printf("Testing: Print the tokenarray\n\n");
         for (i = 0; i < ts->size; i++)
@@ -544,11 +588,13 @@ command_stream_t make_command_stream (int (*get_next_byte) (void *),
             if (ts->tokarray[i].type == WORD || ts->tokarray[i].type == LOGICAND || 
                 ts->tokarray[i].type == LOGICOR)
                     printf("%s\n", ts->tokarray[i].data.word);
+            else if (ts->tokarray[i].type == NEWLINE)
+                printf("newline\n");
             else
                 printf("%c\n", ts->tokarray[i].data.symbol);
         }
         printf("Calling parser now\n");
-        command_t rootcommand = parse(ts, cmdstack, opstack);
+        command_t rootcommand = parse(ts, cmdstack, opstack); // PARSIFY!!!!
         printf("Parser exited!\n");
         if (rootcommand->status == 1)
         {
@@ -590,8 +636,7 @@ command_stream_t make_command_stream (int (*get_next_byte) (void *),
 
 
 
-command_t
-read_command_stream (command_stream_t s)
+command_t read_command_stream (command_stream_t s)
 {
     /* FIXME: Replace this with your implementation too.  */
     // We'll have an array of command_t, and this function will return 
@@ -599,7 +644,7 @@ read_command_stream (command_stream_t s)
     
     // Probably going to need to use recursion for subshells, but we'll see...
     if (s->timesread >= s->numcmds)
-        return NULL;
+        return 0;
     
     command_t retvalue = s->carray[s->timesread];
     s->timesread++;
