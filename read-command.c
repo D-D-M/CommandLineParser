@@ -312,22 +312,7 @@ struct command* parse(token_stream *ts, cmd_stack_struct* cmdstack, tok_stack_st
     struct command* root = (command_t)checked_malloc(sizeof(struct command)*maxsize);
 
     int ti;                     // token iterator 
-    // tok_stack_struct opstack;   // operator stack, used for &&, ||, | and ; only
-    // tok_stack_struct stack;     // stack with simple commands, simple commands with I/O
-    // cmd_stack_struct cmdstack;  // command stack (filling in the command details    
 
-    // Initial stacks with ts->size possible slots  
-    // NOTE: no stack, array, etc can have more elements than ts->size.
-    // opstack.con = (token*)checked_malloc(sizeof(token)*(ts->size));
-    // opstack.top = -1;   // EMPTY
-    // stack.con = (token*)checked_malloc(sizeof(token)*(ts->size));
-    // stack.top = -1;     // EMPTY
-    // cmdstack.con = (struct command*)checked_malloc(sizeof(struct command)*(ts->size));
-    // cmdstack.top = -1;  // EMPTY
-    
-    // struct command *postfix = (struct command*)checked_malloc(sizeof(struct command)*(ts->size));
-
-    // token t = &ts->tokarray;
     // Iterate through the token array
     for(ti = 0; ti < maxsize; ti++)
     {
@@ -352,12 +337,30 @@ struct command* parse(token_stream *ts, cmd_stack_struct* cmdstack, tok_stack_st
             {
                 if (tarray[ti+1].type == WORD)
                 {
-                    cmd->input = tarray[ti+1].data.word;
-                    cmd->output = NULL;
-                    ti++;
-                    // ti+=2;
-                    cmd->status = 1; // complete command
-                    // Within the input here, let's do another for loop until we find an output
+                    // Furthermore, if the NEXT next token is >
+                    if (tarray[ti+2].type == O)
+                    {
+                        cmd->input = tarray[ti+1].data.word;
+                        if (tarray[ti+3].type == WORD)
+                        {
+                            cmd->output = tarray[ti+3].data.word;
+                            cmd->status = 1;
+                            ti+=2; // Just trust me on this one
+                        }
+                        else
+                        {
+                            cmd->status = 0;
+                        }
+                        ti++;
+                    }
+                    else // THE ELSE IS WHAT WORKED BEFORE
+                    {
+                        cmd->input = tarray[ti+1].data.word;
+                        cmd->output = NULL;
+                        ti++;
+                        // ti+=2;
+                        cmd->status = 1; // complete command
+                    }
                 }
                 else
                 {
@@ -425,9 +428,10 @@ struct command* parse(token_stream *ts, cmd_stack_struct* cmdstack, tok_stack_st
                 // struct command lr[2];  // left and right commands to be joined // FISHYYYY
                 // struct command* lr[2];  // left and right commands to be joined // FISHYYYY
                 
-                // But now I want to make sure I malloc properly, I want to have control
+                // But now I want to make sure I malloc properly, I want to have CONTROL
                 // struct command** lr = (struct command**)checked_malloc(sizeof(struct command*)*2); // 2, for L and R
                 
+                // Final idea
                 struct command* L = (struct command*)checked_malloc(sizeof(struct command));
                 struct command* R = (struct command*)checked_malloc(sizeof(struct command));
 
@@ -446,7 +450,7 @@ struct command* parse(token_stream *ts, cmd_stack_struct* cmdstack, tok_stack_st
                         cmd->type = SEQUENCE_COMMAND;
                         break;
                     case NEWLINE:
-                        cmd->type = SEQUENCE_COMMAND;
+                        // cmd->type = SEQUENCE_COMMAND;
                         break;
                     case WORD:
                     case SUBSHELL:
@@ -579,23 +583,23 @@ command_stream_t make_command_stream (int (*get_next_byte) (void *),
 /////////////////////////////////////////////////////////////////////////////////
         // 1. Turn this array of chars into an array of TOKENS.
         token_stream* ts;
-        printf("Calling tokenize now\n");
+        //printf("Calling tokenize now\n");
         ts = tokenize(line, char_count); // TOKENIZE!!!!!!!!!!
-        printf("Success!\n");
-        printf("Testing: Print the tokenarray\n\n");
-        for (i = 0; i < ts->size; i++)
-        {
-            if (ts->tokarray[i].type == WORD || ts->tokarray[i].type == LOGICAND || 
-                ts->tokarray[i].type == LOGICOR)
-                    printf("%s\n", ts->tokarray[i].data.word);
-            else if (ts->tokarray[i].type == NEWLINE)
-                printf("newline\n");
-            else
-                printf("%c\n", ts->tokarray[i].data.symbol);
-        }
-        printf("Calling parser now\n");
+        //printf("Success!\n");
+        // printf("Testing: Print the tokenarray\n\n");
+        // for (i = 0; i < ts->size; i++)
+        // {
+        //     if (ts->tokarray[i].type == WORD || ts->tokarray[i].type == LOGICAND || 
+        //         ts->tokarray[i].type == LOGICOR)
+        //             printf("%s\n", ts->tokarray[i].data.word);
+        //     else if (ts->tokarray[i].type == NEWLINE)
+        //         printf("newline\n");
+        //     else
+        //         printf("%c\n", ts->tokarray[i].data.symbol);
+        // }
+        // printf("Calling parser now\n");
         command_t rootcommand = parse(ts, cmdstack, opstack); // PARSIFY!!!!
-        printf("Parser exited!\n");
+        // printf("Parser exited!\n");
         if (rootcommand->status == 1)
         {
             if (stream_index >= commandcap)
