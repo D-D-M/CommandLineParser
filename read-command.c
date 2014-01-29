@@ -32,7 +32,9 @@ struct command_stream
 {
     command_t* carray; // pointer to an array of command_t objects, 
                        // which are just pointers to 'struct command's
-    command_t* waitingzone; // for incomplete commands
+    // command_t* waitingzone; // for incomplete commands
+    // Better implementation of waiting zone is just one command
+    command_t waitingzone;
     
     int timesread;
     int numcmds; // number of commands in a stream
@@ -292,6 +294,22 @@ token pop_tok(tok_stack_struct *stack)
     return stack->con[poptop];
 }
 
+/*******
+* JOIN *
+********/
+// This function takes a 'waiting' LHS command and joins it with a RHS command
+struct command* join(struct command* LHS, struct command* RHS)
+{
+    // The status of this new command will be the same as RHS->status
+    // struct command* retval = (struct command*)checked_malloc(sizeof(struct command));
+    // Just point the right subcommand of the LHS to the RHS
+    // I'm pretty sure we can trust that the LHS command will definitely be an
+    // operator && || | ; and we can therefore access its command union.
+    // But we can always double check on that later.
+    LHS->u.command[1] = RHS;
+    LHS->status = RHS->status;
+    return LHS;
+}
 
 /*********
  * PARSE *
@@ -422,7 +440,8 @@ struct command* parse(token_stream *ts, cmd_stack_struct* cmdstack, tok_stack_st
             }
             // If the precedence of the operator on the opstack is greater than the precedence
             // of the token you've just run into, you need to start linking commands up.
-            else if (precedence(opstack->con[opstack->top]) >= precedence(tarray[ti]) || ti >= maxsize)
+            // else if (precedence(opstack->con[opstack->top]) >= precedence(tarray[ti]) || ti >= maxsize)
+            else if (precedence(opstack->con[opstack->top]) >= precedence(tarray[ti]))
             {
                 // What we had before...
                 // struct command lr[2];  // left and right commands to be joined // FISHYYYY
@@ -484,20 +503,20 @@ struct command* parse(token_stream *ts, cmd_stack_struct* cmdstack, tok_stack_st
                 else // The stack is empty
                 {
                     printf("operator with no subcommands\n");
-                    cmd->status = -1; // error
+                    // cmd->status = -1; // error
                 }
 
                 push_cmd(cmdstack, *cmd);
                 // free(cmd); // Free the command now that you've pushed its value onto the cmdstack
                 pop_tok(opstack);
                 printf("tarray[%d] type is %d\n", ti, tarray[ti].type);
-                ti = ti-1;
-                /*
+                // ti = ti-1;
+                
                 if (tarray[ti].type == NEWLINE || tarray[ti].type == SEMICOLON)
                     ; // Do nothing
                 else
                     ti--;   // Decrement - This makes sense, don't make Eskild explain it to you again.                                  
-                */
+                
             }
             else
             {
@@ -522,7 +541,7 @@ command_stream_t make_command_stream (int (*get_next_byte) (void *),
 {
     int i;
     int stream_index = 0;
-    int waiting_index = 0;
+    int wi = 0; // 0 if there isn't a command waiting, 1 if there is
     // Allocate space for the command stream
     // NOTE: A command_stream_t is a POINTER to a struct command_stream
     command_stream_t stream = (command_stream_t)checked_malloc(sizeof(struct command_stream));
@@ -532,7 +551,7 @@ command_stream_t make_command_stream (int (*get_next_byte) (void *),
     int cmd_it = 0; // iterator for finding the next command in a line
     stream->carray = (command_t*)checked_malloc(sizeof(command_t)*commandcap);
     stream->valid_syntax = 1;
-    stream->waitingzone = (command_t*)checked_malloc(sizeof(command_t)*commandcap);
+    stream->waitingzone = (command_t)checked_malloc(sizeof(command_t));
 
     // We need a commandstack, and we need an operatorstack
     cmd_stack_struct* cmdstack = (cmd_stack_struct*)checked_malloc(sizeof(cmd_stack_struct));
@@ -548,90 +567,97 @@ command_stream_t make_command_stream (int (*get_next_byte) (void *),
     // As long as we haven't reached the end of the file, keep getting the next character
     while (byte != EOF)
     {
-        int char_cap = 200; // Assume a line will have no more than 200 characters
-        int char_count = 0; // Counter for the number of characters in one line
-        
-        char* line = (char *)checked_malloc(sizeof(char)*char_cap); // Free this after command is parsed
-        while (byte != '\n')
+        if (byte == '\n')
         {
-            // Doesn't matter what the byte is, just put it in the line
-            line[char_count] = byte;
-            char_count++;
-            // If a line is longer than we expect, update its capacity and reallocate.
-            if (char_count >= char_cap)
-            {
-                char_cap *= 2;
-                line = checked_realloc(line, char_cap);
-            }
             byte = get_next_byte(get_next_byte_argument);
         }
-        // Get rid of the newline still there
-        byte = get_next_byte(get_next_byte_argument);
-        if (byte == EOF)
-            break;
-        line[char_count] = '\n';
-        char_count++;
-        // // Testing: print the line
-        // printf("Next line:\n");
-        // for (i = 0; i < char_count; i++)
-        //     printf("char %d = %c\n", i, line[i]);
-
-
-        // At this point, all of the bytes in one line are in this "line" array.
-        // Now we have to parse them into separate commands, from left to right.
-        // THEN, once they're "commanndified", then we can order them on priority.
-/////////////////////////////////////////////////////////////////////////////////
-        // 1. Turn this array of chars into an array of TOKENS.
-        token_stream* ts;
-        //printf("Calling tokenize now\n");
-        ts = tokenize(line, char_count); // TOKENIZE!!!!!!!!!!
-        //printf("Success!\n");
-        // printf("Testing: Print the tokenarray\n\n");
-        // for (i = 0; i < ts->size; i++)
-        // {
-        //     if (ts->tokarray[i].type == WORD || ts->tokarray[i].type == LOGICAND || 
-        //         ts->tokarray[i].type == LOGICOR)
-        //             printf("%s\n", ts->tokarray[i].data.word);
-        //     else if (ts->tokarray[i].type == NEWLINE)
-        //         printf("newline\n");
-        //     else
-        //         printf("%c\n", ts->tokarray[i].data.symbol);
-        // }
-        // printf("Calling parser now\n");
-        command_t rootcommand = parse(ts, cmdstack, opstack); // PARSIFY!!!!
-        // printf("Parser exited!\n");
-        if (rootcommand->status == 1)
+        else
         {
-            if (stream_index >= commandcap)
-            {
-                commandcap *= 2;
-                stream->carray = checked_realloc(stream->carray, commandcap);
-            }
+            int char_cap = 200; // Assume a line will have no more than 200 characters
+            int char_count = 0; // Counter for the number of characters in one line
             
-            // if (waiting_index > 0) // If there are commands waiting, parse them all!
-            // {
-            //     // Make sure indices are legit
-            //     int d = 0;
-            //     for (; d < waiting_index; d++)
-            //     {
+            char* line = (char *)checked_malloc(sizeof(char)*char_cap); // Free this after command is parsed
+            while (byte != '\n')
+            {
+                // Doesn't matter what the byte is, just put it in the line
+                line[char_count] = byte;
+                char_count++;
+                // If a line is longer than we expect, update its capacity and reallocate.
+                if (char_count >= char_cap)
+                {
+                    char_cap *= 2;
+                    line = checked_realloc(line, char_cap);
+                }
+                byte = get_next_byte(get_next_byte_argument);
+            }
+            // Get rid of the newline still there
+            byte = get_next_byte(get_next_byte_argument);
+            if (byte == EOF)
+                break;
+            line[char_count] = '\n';
+            char_count++;
+            // // Testing: print the line
+            // printf("Next line:\n");
+            // for (i = 0; i < char_count; i++)
+            //     printf("char %d = %c\n", i, line[i]);
 
-            //     }
-            //     waiting_index = 0;
+
+            // At this point, all of the bytes in one line are in this "line" array.
+            // Now we have to parse them into separate commands, from left to right.
+            // THEN, once they're "commanndified", then we can order them on priority.
+    /////////////////////////////////////////////////////////////////////////////////
+            // 1. Turn this array of chars into an array of TOKENS.
+            token_stream* ts;
+            //printf("Calling tokenize now\n");
+            ts = tokenize(line, char_count); // TOKENIZE!!!!!!!!!!
+            //printf("Success!\n");
+            // printf("Testing: Print the tokenarray\n\n");
+            // for (i = 0; i < ts->size; i++)
+            // {
+            //     if (ts->tokarray[i].type == WORD || ts->tokarray[i].type == LOGICAND || 
+            //         ts->tokarray[i].type == LOGICOR)
+            //             printf("%s\n", ts->tokarray[i].data.word);
+            //     else if (ts->tokarray[i].type == NEWLINE)
+            //         printf("newline\n");
+            //     else
+            //         printf("%c\n", ts->tokarray[i].data.symbol);
             // }
-            stream->carray[stream_index] = rootcommand;
-            stream_index++;
+            // printf("Calling parser now\n");
+            command_t rootcommand = parse(ts, cmdstack, opstack); // PARSIFY!!!!
+            // printf("Parser exited!\n");
+            if (rootcommand->status == 1)
+            {
+                if (stream_index >= commandcap)
+                {
+                    commandcap *= 2;
+                    stream->carray = checked_realloc(stream->carray, commandcap);
+                }
+                
+                if (wi) // If there is a command waiting, join it!
+                {
+                    rootcommand = join(stream->waitingzone, rootcommand);
+                    wi = 0;
+                }
+                stream->carray[stream_index] = rootcommand;
+                stream_index++;
+            }
+            else // INCOMPLETE COMMAND: we should either stage it for waiting, or join it with
+                 // the thing that's currently waiting
+            {
+                if (wi) // If we're already waiting on something, join those two things
+                {
+                    printf("Joining\n");
+                    stream->waitingzone = join(stream->waitingzone, rootcommand);
+                    wi = 1;
+                }
+                else // There's nothing to be waited on.
+                {
+                    printf("Add to waiting zone\n");
+                    stream->waitingzone = rootcommand;
+                    wi = 1;
+                }
+            }
         }
-        // else
-        // {
-        //         if (stream_index >= commandcap)
-        //         {
-        //             commandcap *= 2;
-        //             stream->waitingzone = checked_realloc(stream->waitingzone, commandcap);
-        //         }
-        //         stream->waitingzone[waiting_index] = rootcommand;
-        //         waiting_index++;
-        // }
-        
     }
     stream->timesread = 0;
     stream->numcmds = stream_index;
