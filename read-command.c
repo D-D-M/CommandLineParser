@@ -421,6 +421,11 @@ struct command* parse(token_stream *ts, cmd_stack_struct* cmdstack, tok_stack_st
                 cmd->status = 1;
                 ti--;
             }
+            // else if (tarray[ti].type == LOGICOR || tarray[ti].type == LOGICAND || tarray[ti].type == PIPE)
+            // {
+            //     cmd->status = 1;
+            //     ti--;
+            // }
             else
                 ti--;
             cmd->type = SIMPLE_COMMAND;
@@ -510,12 +515,17 @@ struct command* parse(token_stream *ts, cmd_stack_struct* cmdstack, tok_stack_st
                 // free(cmd); // Free the command now that you've pushed its value onto the cmdstack
                 pop_tok(opstack);
                 printf("tarray[%d] type is %d\n", ti, tarray[ti].type);
-                // ti = ti-1;
-                
-                if (tarray[ti].type == NEWLINE || tarray[ti].type == SEMICOLON)
-                    ; // Do nothing
-                else
-                    ti--;   // Decrement - This makes sense, don't make Eskild explain it to you again.                                  
+                ti--;
+                                
+                // if (tarray[ti].type == NEWLINE || tarray[ti].type == SEMICOLON)
+                // {
+                //     // while (cmdstack->top > 0)
+                //     // {
+
+                //     // }
+                // }
+                // else
+                //     ti--;   // Decrement - This makes sense, don't make Eskild explain it to you again.                                  
                 
             }
             else
