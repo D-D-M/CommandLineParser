@@ -2,7 +2,6 @@
 
 enum command_type
 {
-  // Reorder the commands by priority, with 0 being lowest priority
   // Might not be necessary but do it just in case
   AND_COMMAND,         
   SEQUENCE_COMMAND,    

@@ -293,21 +293,61 @@ token pop_tok(tok_stack_struct *stack)
     stack->top--;
     return stack->con[poptop];
 }
+int cmd_priority(const struct command* P)
+{
+    switch(P->type)
+    {
+        case SEQUENCE_COMMAND:
+            return 0;
+        case AND_COMMAND:
+        case OR_COMMAND:
+            return 1;
+        case PIPE_COMMAND:
+            return 2;
+        case SIMPLE_COMMAND:
+            return 3;
+        case SUBSHELL_COMMAND:
+            return 4;
+    }
+    return -1; // if failure
+}
+// int determine_stackpops(const cmd_stack_struct* c_stack, const tok_stack_struct* o_stack)
+// {
+//     // opstack is guaranteed to have at least one thing in it
+//     int csize = c_stack->top + 1;
+//     int opsize = o_stack->top + 1;
+//     if (opsize == 1 && csize > 1)
+//         return 2;
+//     else
+//     {   
+//         if (csize == 1)
+//             return 1;
+//     }
 
+//     return 0;
+// }
 /*******
 * JOIN *
 ********/
 // This function takes a 'waiting' LHS command and joins it with a RHS command
 struct command* join(struct command* LHS, struct command* RHS)
 {
-    // The status of this new command will be the same as RHS->status
-    // struct command* retval = (struct command*)checked_malloc(sizeof(struct command));
-    // Just point the right subcommand of the LHS to the RHS
-    // I'm pretty sure we can trust that the LHS command will definitely be an
-    // operator && || | ; and we can therefore access its command union.
-    // But we can always double check on that later.
-    LHS->u.command[1] = RHS;
-    LHS->status = RHS->status;
+    // How we join the commands depends on the precedence of the two commands
+    // Precedence function takes tokens
+    // c_priority function takes commands
+
+    if (cmd_priority(LHS) <= cmd_priority(RHS))
+    {
+        LHS->u.command[1] = RHS->u.command[0];
+        RHS->u.command[0] = LHS;
+        LHS->status = 1;
+    }
+    else
+    {
+        LHS->u.command[1] = RHS;
+        LHS->status = 1;
+    }
+
     return LHS;
 }
 
@@ -330,6 +370,14 @@ struct command* parse(token_stream *ts, cmd_stack_struct* cmdstack, tok_stack_st
     struct command* root = (command_t)checked_malloc(sizeof(struct command)*maxsize);
 
     int ti;                     // token iterator 
+
+    // Make sure that we pop off all newlines if they're the only item
+    // on top of the opstack when we run parse for a new line
+    enum token_type topt = opstack->con[0].type;
+    if (opstack->top == 0 && (topt == NEWLINE)) // || topt == SEMICOLON)
+    {
+        token removed = pop_tok(opstack);
+    }
 
     // Iterate through the token array
     for(ti = 0; ti < maxsize; ti++)
@@ -421,11 +469,11 @@ struct command* parse(token_stream *ts, cmd_stack_struct* cmdstack, tok_stack_st
                 cmd->status = 1;
                 ti--;
             }
-            // else if (tarray[ti].type == LOGICOR || tarray[ti].type == LOGICAND || tarray[ti].type == PIPE)
-            // {
-            //     cmd->status = 1;
-            //     ti--;
-            // }
+            else if (tarray[ti].type == LOGICOR || tarray[ti].type == LOGICAND || tarray[ti].type == PIPE)
+            {
+                cmd->status = 1; // Might need to comment this out, look at the idea you wrote
+                ti--;
+            }
             else
                 ti--;
             cmd->type = SIMPLE_COMMAND;
@@ -488,12 +536,16 @@ struct command* parse(token_stream *ts, cmd_stack_struct* cmdstack, tok_stack_st
                 cmd->output = NULL;
                 cmd->status = 0; // Command status should be "waiting" until we know that we have 
                                 // two commands on the stack, ready to be joined
-                // If the stack is NOT empty
+                // How many times we're going to pop the stack
+                // int numpops = determine_stackpops(cmdstack, opstack);
+
                 if (cmdstack->top != -1)
+                // if (numpops >= 1)
                 {
                     // Set the value of the command
                     *R = pop_cmd(cmdstack);
                     if (cmdstack->top != -1)
+                    // if (numpops >= 2)
                     {
                         *L = pop_cmd(cmdstack);
                         cmd->u.command[0] = L;
