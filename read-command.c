@@ -35,7 +35,7 @@ struct command_stream
     // command_t* waitingzone; // for incomplete commands
     // Better implementation of waiting zone is just one command
     command_t waitingzone;
-    int waitstatus; // 0 for not waiting, 1 for waiting
+    
     int timesread;
     int numcmds; // number of commands in a stream
     // int* hp; // highest priority in each line?? hp[0] = 5; hp[1] = 3;
@@ -89,11 +89,55 @@ typedef struct
     int size; // size of token array
 } token_stream;
 
+void free_token_stream(token_stream* t)
+{
+    // Need to free the tokarray
+    // Need to free each individual token, depending on size
+    
+    int i;
+    printf("Beginning free.\n");
+    for (i = 0; i < t->size; i++)
+    {
+        enum token_type type = t->tokarray[i].type;
+        if (type == WORD || type == LOGICOR || type == LOGICAND)
+        {
+            if (t->tokarray[i].data.word)
+            {
+                printf("Freeing token %d data.word\n",i);
+                free(t->tokarray[i].data.word);
+                t->tokarray[i].data.word = NULL;
+            }
+        }
+        else // if (t->tokarray[i].data.symbol) // If it's a symbol < >
+        {
+            // We don't need to free anything
+            // if (t->tokarray[i].data.symbol)
+            // {
+            //     printf("Freeing token %d data.symbol\n",i);
+            //     free(t->tokarray[i].data.symbol);
+            //     t->tokarray[i].data.symbol = NULL;
+            // }
+        }
+    }
+
+    if (t->tokarray)
+    {
+        printf("Freeing the tokarray.\n");
+        free(t->tokarray);
+        t->tokarray = NULL;
+    }
+    free(t);
+    t = NULL;
+    
+    return;
+}
+
 // If it succeeds, this function accepts a char array and returns a token_stream
 // If it fails (because of bad syntax), this function will return NULL.
 token_stream* tokenize(const char* line, const int linesize)
 {
-    int sizeguess = 50;
+    // int sizeguess = 50;
+    int sizeguess = linesize;
     token_stream* ts = (token_stream*)checked_malloc(sizeof(token_stream));
     // These will be the fields of the token stream at the very end (easier to read)
     token* a = (token*)checked_malloc(sizeof(token)*sizeguess);
@@ -108,21 +152,27 @@ token_stream* tokenize(const char* line, const int linesize)
         if (is_word(&line[c]))
         {
             int w = 0;
-            int charscap = 20;
+            int charscap = 15;
             char* word = (char*)checked_malloc(sizeof(char)*charscap);
             while (is_word(&line[c]))
             {
                 word[w] = line[c];
                 w++; c++;
-                // printf("%c\n", line);
+                // // printf("%c\n", line);
+                if (w >= charscap)
+                {
+                    charscap *= 2;
+                    word = checked_realloc(word, charscap);
+                }
             }
             // word[w] = '\0'; // null terminator
-            // printf("%s\n",word);
+            // // printf("%s\n",word);
             // Put that word in the tokenarray, update token
-            // printf("tasize %d\n", tasize);
+            // // printf("tasize %d\n", tasize);
             a[tasize].type = WORD;
             a[tasize].data.word = word;
             tasize++;
+            // free(word);
         }
         else if (line[c] == '#')
             c = linesize; // Comment means we can stop
@@ -130,6 +180,7 @@ token_stream* tokenize(const char* line, const int linesize)
         {
             a[tasize].type = I;
             a[tasize].data.symbol = line[c];
+            // a[tasize].data.word = &line[c];
             c++; tasize++;
         }
         else if (line[c] == '>')
@@ -264,9 +315,11 @@ struct command pop_cmd(cmd_stack_struct *stack)
     return stack->con[poptop];
 }
 
+
 /**********************
  * TOKEN STACK STRUCT *
  **********************/
+
 // Stack struct with an array of token structs
 typedef struct 
 {
@@ -291,9 +344,6 @@ token pop_tok(tok_stack_struct *stack)
     stack->top--;
     return stack->con[poptop];
 }
-/**********************
- * Determines command priority
- **********************/
 int cmd_priority(const struct command* P)
 {
     switch(P->type)
@@ -310,7 +360,7 @@ int cmd_priority(const struct command* P)
         case SUBSHELL_COMMAND:
             return 4;
     }
-    return -1; //failure
+    return -1; // if failure
 }
 // int determine_stackpops(const cmd_stack_struct* c_stack, const tok_stack_struct* o_stack)
 // {
@@ -327,32 +377,9 @@ int cmd_priority(const struct command* P)
 
 //     return 0;
 // }
-/*******
-* JOIN *
-********/
-// This function takes a 'waiting' LHS command and joins it with a RHS command
-struct command* join(struct command* LHS, struct command* RHS)
-{
-    // How we join the commands depends on the precedence of the two commands
-    // Precedence function takes tokens
-    // c_priority function takes commands
-
-    if (cmd_priority(LHS) >= cmd_priority(RHS))
-    {
-        LHS->u.command[1] = RHS->u.command[0];
-        RHS->u.command[0] = LHS;
-        LHS->status = 1;
-        return RHS; // This used to not be here
-    }
-    else
-    {
-        LHS->u.command[1] = RHS;
-        LHS->status = 1;
-        return LHS;
-    }
-    // return LHS; // this used to be here
-    
-}
+/*************************
+*PARSING HELPER FUNCTIONS*
+*************************/
 void parse_input(struct command* cmd, const token_stream* ts, cmd_stack_struct* cmdstack, tok_stack_struct* opstack, int* ti)
 {
     token* tarray = ts->tokarray;
@@ -385,8 +412,11 @@ void parse_input(struct command* cmd, const token_stream* ts, cmd_stack_struct* 
             return;
         }
     }
-    else
+    else // This means that < was the last character on a line, resulting in an error
+    {
         cmd->status = -1;
+        // exit(1);
+    }
     return;
 }
 void parse_output(struct command* cmd, const token_stream* ts, cmd_stack_struct* cmdstack, tok_stack_struct* opstack, int* ti)
@@ -404,10 +434,93 @@ void parse_output(struct command* cmd, const token_stream* ts, cmd_stack_struct*
         cmd->status = -1;
     return;
 }
+/*******
+* JOIN *
+********/
+// This function takes a 'waiting' LHS command and joins it with a RHS command
+struct command* join(struct command* LHS, struct command* RHS)
+{
+    // How we join the commands depends on the precedence of the two commands
+    // Precedence function takes tokens
+    // c_priority function takes commands
+
+    // Move LHS down the right side of the tree until 1 before the NULL value
+    int i = 0;
+
+    struct command* LROOT = LHS;
+    int count = 0;
+    while (LHS->u.command[1] != NULL) // Find the rightmost NULL node, usually just LHS
+    {
+        LHS = LHS->u.command[1];
+        count++;
+    }
+
+    // If it's an actual command
+    if (RHS->type == AND_COMMAND || RHS->type == OR_COMMAND || RHS->type == SEQUENCE_COMMAND 
+        || RHS->type == PIPE_COMMAND)
+    {
+        if (cmd_priority(LHS) <= cmd_priority(RHS))
+        {
+            LHS->u.command[1] = RHS->u.command[0];
+            RHS->u.command[0] = LHS;
+            // Set the status to 1 for all nodes between LROOT and LHS
+            // LHS->status = 1;
+            LHS = LROOT;
+            for (i = 0; i < count; i++)
+            {
+                LHS->status = 1;
+                LHS = LHS->u.command[1];
+            }
+            return RHS;
+        }
+        else
+        {
+            LHS->u.command[1] = RHS;
+            // Set the status to 1 for all nodes between LROOT and LHS
+            // LHS->status = 1;
+            LHS = LROOT;
+            for (i = 0; i < count; i++)
+            {
+                LHS->status = 1;
+                LHS = LHS->u.command[1];
+            }
+            // return LHS;
+            return LROOT;
+        }
+    }
+    // Else if it's just a simple command
+    else if (RHS->type == SIMPLE_COMMAND)
+    {
+        LHS->u.command[1] = RHS;
+            // Set the status to 1 for all nodes between LROOT and LHS
+            // LHS->status = 1;
+            LHS = LROOT;
+            for (i = 0; i < count; i++)
+            {
+                LHS->status = 1;
+                LHS = LHS->u.command[1];
+            }
+        // return LHS;
+        return LROOT;
+    }
+    else // SUBSHELL COMMAND!
+    {
+        printf("Subshell command!\n");
+        return 0;
+    }
+}
+
 /*********
  * PARSE *
  *********/
-struct command* parse(command_stream_t cs, token_stream *ts, cmd_stack_struct* cmdstack, tok_stack_struct* opstack)
+// Because any command can continue onto the next line, and we're only reading one line at a time,
+// we're going to need access to the command stack and the operator stack 
+// OUTSIDE of this function, OUTSIDE of even the while !EOF loop
+// 
+// Shit, maybe even a command_stream_t needs to declare both stacks in itself,
+// yeah, that's good, I love it
+
+struct command* parse(token_stream *ts, cmd_stack_struct* cmdstack, tok_stack_struct* opstack)
 {   
     // Simplify
     int maxsize = ts->size;
@@ -415,32 +528,102 @@ struct command* parse(command_stream_t cs, token_stream *ts, cmd_stack_struct* c
     // This function will return 'root'
     struct command* root = (command_t)checked_malloc(sizeof(struct command)*maxsize);
 
-    int ti; // token iterator 
+    int ti;                     // token iterator 
 
     // Make sure that we pop off all newlines if they're the only item
     // on top of the opstack when we run parse for a new line
-    enum token_type topt = opstack->con[0].type;
-    //!!!!!!!!!!
-    // FISHY!!!!
-    //!!!!!!!!!!
-    if (opstack->top == 0 && (topt == NEWLINE)) // || topt == SEMICOLON)
+    if (opstack->top == 0) // || topt == SEMICOLON)
     {
-        token removed = pop_tok(opstack);
+        enum token_type topt = opstack->con[0].type;
+        while (topt == NEWLINE && opstack->top > -1)
+        {
+            token removed = pop_tok(opstack);
+            topt = opstack->con[0].type;
+        }
     }
+
     // Iterate through the token array
     for(ti = 0; ti < maxsize; ti++)
     {
         struct command* cmd = (struct command*)checked_malloc(sizeof(struct command));
-        cmd->status = 0;
+        // cmd->status = 0;
+        //
         if (is_simple(&tarray[ti]))
         {
             int z = 0;
             cmd->u.word = (char**)checked_malloc(sizeof(char*)*maxsize);
             while(tarray[ti].type == WORD)
             {
+                // Word isn't being set properly
                 cmd->u.word[z] = tarray[ti].data.word;
                 ti++; z++;
             }
+            /*
+            if (tarray[ti].type == I)
+            {
+                if (tarray[ti+1].type == WORD)
+                {
+                    // Furthermore, if the NEXT next token is >
+                    if (tarray[ti+2].type == O)
+                    {
+                        cmd->input = tarray[ti+1].data.word;
+                        if (tarray[ti+3].type == WORD)
+                        {
+                            cmd->output = tarray[ti+3].data.word;
+                            cmd->status = 1;
+                            ti+=2; // Just trust me on this one
+                        }
+                        else
+                        {
+                            cmd->status = 0;
+                        }
+                        ti++;
+                    }
+                    else // THE ELSE IS WHAT WORKED BEFORE
+                    {
+                        cmd->input = tarray[ti+1].data.word;
+                        cmd->output = NULL;
+                        ti++;
+                        // ti+=2;
+                        cmd->status = 1; // complete command
+                    }
+                }
+                else
+                {
+                    if (tarray[ti+1].type == NEWLINE)
+                        cmd->status = 0; // incomplete command
+                    else
+                        cmd->status = -1; // error (we think) might just return NULL;
+                }
+            }
+            else if (tarray[ti].type == O)
+            {
+                if (tarray[ti+1].type == WORD)
+                {
+                    // // Only set input to NULL if cmd->status is 0, if it's incomplete
+                    // if (cmd->status == 0)
+                    // {
+                    //     cmd->input = NULL;
+                    // }
+                    // else // a b<c > d
+                    // {
+                    //     // Input has already been set by the input operator above, so we're good
+                    //     ;
+                    // }
+                    cmd->input = NULL;
+                    cmd->output = tarray[ti+1].data.word;
+                    ti++;
+                    cmd->status = 1; // complete command
+                }
+                else
+                {
+                    if (tarray[ti+1].type == NEWLINE)
+                        cmd->status = 0; // incomplete command
+                    else
+                        cmd->status = -1; // error (we think)
+                }
+            }
+            */
             if (tarray[ti].type == I)           // INPUT < SYMBOL
             {
                 ti++;
@@ -451,22 +634,32 @@ struct command* parse(command_stream_t cs, token_stream *ts, cmd_stack_struct* c
                 ti++;
                 parse_output(cmd, ts, cmdstack, opstack, &ti);
             }
+            else if (tarray[ti].type == NEWLINE || tarray[ti].type == SEMICOLON)
+            {
+                cmd->status = 1;
+                ti--;
+            }
+            else if (tarray[ti].type == LOGICOR || tarray[ti].type == LOGICAND || tarray[ti].type == PIPE)
+            {
+                cmd->status = 1; // Might need to comment this out, look at the idea you wrote
+                ti--;
+            }
             else
-                ti--; // Need this to stay in the same spot.
-
+                ti--;
             cmd->type = SIMPLE_COMMAND;
             // Now we either have a simple command with a status
             push_cmd(cmdstack, *cmd);
             // printf("Stack push_cmd!\n");
             // Free that command
-            // free(cmd);
+            free(cmd);
         }
+        // Sequence command needs to know if there's anything after it
         else // if (is_op(&ts->tokarray[ti]))     // is an operator: &&, ||, |, ;
         {
             // If the opstack is empty, just push this operator onto it, badaboom
             if (opstack->top == -1)
             {
-                // printf("Stack push_op!\n"); 
+                // printf("Pushing op at position %d !\n", ti);
                 push_tok(opstack, tarray[ti]);
             }
             // If the precedence of the operator on the opstack is greater than the precedence
@@ -515,39 +708,32 @@ struct command* parse(command_stream_t cs, token_stream *ts, cmd_stack_struct* c
                 {
                     // Set the value of the command
                     *R = pop_cmd(cmdstack);
-                    int top = cmdstack->top;
-                    // if (top != -1 && cmd_priority(&cmdstack->con[top]) >= cmd_priority(cmd))
-                    if (top != -1 && cmd_priority(&cmdstack->con[top]) >= cmd_priority(cmd))
-                    // if (numpops >= 2)
+                    token OP = pop_tok(opstack); // opstack is now size-1
+                    if (cmdstack->top != -1)
                     {
-                        *L = pop_cmd(cmdstack);
-                        cmd->u.command[0] = L;
-                        cmd->u.command[1] = R;
-                        // cmd->status = 1; // Not waiting anymore
-                        // cmd->status = R->status;
-                    }
-                    else
+                        // If there's nothing left in the opstack, do what we normally do
+                        // if (opstack->top == -1) 
+                        if (cmdstack->top > opstack->top)
+                        {
+                            *L = pop_cmd(cmdstack);
+                            cmd->u.command[0] = L;
+                            cmd->u.command[1] = R;
+                            // if (L->status == 1 && R->status == 1)
+                            // {
+                            //     cmd->status = 1; // Not waiting anymore
+                            // }
+                            cmd->status = L->status && R->status; // Not waiting anymore
+                            // cmd->status = 1;
+
+                        }
+                        else //if (precedence(OP) > precedence(opstack->con[opstack->top]))
+                        {
+                            cmd->u.command[0] = R; // still waiting
+                        }
+                    } 
+                    else // There are no commands to pair cmd with, i.e. cmdstack is empty
                     {
                         cmd->u.command[0] = R; // still waiting
-                        cmd->u.command[1] = NULL;
-                    }
-                    // Set status before pushing
-                    // printf("Status being set here \n");
-                    // printf("command[0] value is %p\n", cmd->u.command[0]);
-                    // printf("command[1] value is %p\n", cmd->u.command[1]);
-                    if (cmd->u.command[0] == NULL && cmd->u.command[1] == NULL)
-                    {
-                        cmd->status = 1;
-                        // printf("status set to 1\n");
-                    } else if (cmd->u.command[0] != NULL && cmd->u.command[1] == NULL)
-                    {
-                        cmd->status = 0;
-                        // printf("status set to 0\n");
-                    }
-                    else
-                    {
-                        cmd->status = 1;
-                        // printf("status set to 1\n");
                     }
                 }
                 else // The stack is empty
@@ -555,27 +741,10 @@ struct command* parse(command_stream_t cs, token_stream *ts, cmd_stack_struct* c
                     // printf("operator with no subcommands\n");
                     // cmd->status = -1; // error
                 }
-                // As we push a command onto the stack, let's think:
-                // If there's a command waiting, we need to merge cmd with waiting zone
-                if (cs->waitstatus == 1)
-                {
-                    if (cmd->status == 0) // if we have an INCOMPLETE cmd
-                    {
-                        cs->waitingzone = join(cs->waitingzone, cmd);
-                        cs->waitstatus = 1;
-                    }
-                    else // if we have a COMPLETE cmd
-                    {
-                        cmd = join(cs->waitingzone, cmd);
-                        cs->waitstatus = 0;
-                    }
-                }
-                // Set status before pushing
-                
-                
+
                 push_cmd(cmdstack, *cmd);
-                // free(cmd); // Free the command now that you've pushed its value onto the cmdstack
-                pop_tok(opstack);
+                free(cmd); // Free the command now that you've pushed its value onto the cmdstack
+                
                 // printf("tarray[%d] type is %d\n", ti, tarray[ti].type);
                 ti--;
                                 
@@ -592,7 +761,7 @@ struct command* parse(command_stream_t cs, token_stream *ts, cmd_stack_struct* c
             }
             else
             {
-                // printf("Stack push_op!\n"); 
+                // printf("Pushing op at position %d !\n", ti); 
                 push_tok(opstack, tarray[ti]);
             }
         }
@@ -602,35 +771,8 @@ struct command* parse(command_stream_t cs, token_stream *ts, cmd_stack_struct* c
     // Test what the value of root is before we return it
     // printf("root type is %d\n",root->type);
     // printf("root status is %d\n", root->status);
-    //FIX THE ROOT IF IT NEEDS IT
-    if (root->status == 1)
-    {   
-        // As long as the command[1] isn't null
-        if (root->u.command[1] != NULL)
-        {
-            if (root->u.command[1]->status == 0)
-                root->status = 0;
-        }
-            
-    }
-
-
-    // if (root->status == 0 && cs->waitstatus == 0)
-    // {
-    //     cs->waitingzone = root;
-    //     cs->waitstatus = 1;
-    // }
-    // else if (root->status == 0 && cs->waitstatus == 1)
-    // {
-    //     // join those two commands
-    //     cs->waitingzone = join(cs->waitingzone, root);
-    //     cs->waitstatus = 1;
-    // }
-    // else if (root->status == 1 && cs->waitstatus == 0)
-    // {
-    //     cs->waitingzone = join(cs->waitingzone, root);
-    //     cs->waitstatus = 0;
-    // }
+    // if (root->)
+    // // printf("Is root null? Check: %p\n", root);
     return root;
 }
 
@@ -638,7 +780,7 @@ struct command* parse(command_stream_t cs, token_stream *ts, cmd_stack_struct* c
 command_stream_t make_command_stream (int (*get_next_byte) (void *),
               void *get_next_byte_argument)
 {
-    int i;
+    int i = 0;
     int stream_index = 0;
     int wi = 0; // 0 if there isn't a command waiting, 1 if there is
     // Allocate space for the command stream
@@ -651,7 +793,6 @@ command_stream_t make_command_stream (int (*get_next_byte) (void *),
     stream->carray = (command_t*)checked_malloc(sizeof(command_t)*commandcap);
     stream->valid_syntax = 1;
     stream->waitingzone = (command_t)checked_malloc(sizeof(command_t));
-    stream->waitstatus = 0;
 
     // We need a commandstack, and we need an operatorstack
     cmd_stack_struct* cmdstack = (cmd_stack_struct*)checked_malloc(sizeof(cmd_stack_struct));
@@ -689,17 +830,17 @@ command_stream_t make_command_stream (int (*get_next_byte) (void *),
                     line = checked_realloc(line, char_cap);
                 }
                 byte = get_next_byte(get_next_byte_argument);
-            }
+            }  
             // Get rid of the newline still there
             byte = get_next_byte(get_next_byte_argument);
-            if (byte == EOF)
-                break;
+            // if (byte == EOF)
+            //     break;
             line[char_count] = '\n';
             char_count++;
             // // Testing: print the line
-            // printf("Next line:\n");
+            // // printf("Next line:\n");
             // for (i = 0; i < char_count; i++)
-            //     printf("char %d = %c\n", i, line[i]);
+            //     // printf("char %d = %c\n", i, line[i]);
 
 
             // At this point, all of the bytes in one line are in this "line" array.
@@ -708,23 +849,26 @@ command_stream_t make_command_stream (int (*get_next_byte) (void *),
     /////////////////////////////////////////////////////////////////////////////////
             // 1. Turn this array of chars into an array of TOKENS.
             token_stream* ts;
-            //printf("Calling tokenize now\n");
+            //// printf("Calling tokenize now\n");
             ts = tokenize(line, char_count); // TOKENIZE!!!!!!!!!!
-            //printf("Success!\n");
-            // printf("Testing: Print the tokenarray\n\n");
+            //// printf("Success!\n");
+            // // printf("Testing: Print the tokenarray\n\n");
             // for (i = 0; i < ts->size; i++)
             // {
             //     if (ts->tokarray[i].type == WORD || ts->tokarray[i].type == LOGICAND || 
             //         ts->tokarray[i].type == LOGICOR)
-            //             printf("%s\n", ts->tokarray[i].data.word);
+            //             // printf("%s\n", ts->tokarray[i].data.word);
             //     else if (ts->tokarray[i].type == NEWLINE)
-            //         printf("newline\n");
+            //         // printf("newline\n");
             //     else
-            //         printf("%c\n", ts->tokarray[i].data.symbol);
+            //         // printf("%c\n", ts->tokarray[i].data.symbol);
             // }
-            // printf("Calling parser now\n");
-            command_t rootcommand = parse(stream, ts, cmdstack, opstack); // PARSIFY!!!!
-            // printf("Parser exited!\n");
+            // // printf("Calling parser now\n");
+            command_t rootcommand = parse(ts, cmdstack, opstack); // PARSIFY!!!!
+            
+            // free_token_stream(ts);
+            
+            // // printf("Parser exited!\n");
             if (rootcommand->status == 1)
             {
                 if (stream_index >= commandcap)
@@ -732,15 +876,11 @@ command_stream_t make_command_stream (int (*get_next_byte) (void *),
                     commandcap *= 2;
                     stream->carray = checked_realloc(stream->carray, commandcap);
                 }
-                // if (wi) // If there is a command waiting, join it!
-                // {
-                //     rootcommand = join(stream->waitingzone, rootcommand);
-                //     wi = 0;
-                // }
-                if (stream->waitstatus)
+                
+                if (wi) // If there is a command waiting, join it!
                 {
                     rootcommand = join(stream->waitingzone, rootcommand);
-                    stream->waitstatus = 0;
+                    wi = 0;
                 }
                 stream->carray[stream_index] = rootcommand;
                 stream_index++;
@@ -748,24 +888,39 @@ command_stream_t make_command_stream (int (*get_next_byte) (void *),
             else // INCOMPLETE COMMAND: we should either stage it for waiting, or join it with
                  // the thing that's currently waiting
             {
-                // if (wi) // If we're already waiting on something, join those two things
-                // {
-                //     printf("Joining\n");
-                //     stream->waitingzone = join(stream->waitingzone, rootcommand);
-                //     wi = 1;
-                // }
-                // else // There's nothing to be waited on.
-                // {
-                // printf("Add to waiting zone\n");
-                stream->waitingzone = rootcommand;
-                stream->waitstatus = 1;
-                // wi = 1;
-                // }
+                if (wi) // If we're already waiting on something, join those two things
+                {
+                    // printf("Joining\n");
+                    stream->waitingzone = join(stream->waitingzone, rootcommand);
+                    wi = 1;
+                }
+                else // There's nothing to be waited on.
+                {
+                    // printf("Add to waiting zone\n");
+                    stream->waitingzone = rootcommand;
+                    wi = 1;
+                }
             }
+            free(line);
+            free_token_stream(ts);
         }
+
+    }
+    // If our waitingzone is a SEQUENCE command with a null command[1] value,
+    // then we're not actually waiting for anything, and we can add this command
+    // to the next slot in carray.
+    //
+    if (stream->waitingzone->type == SEQUENCE_COMMAND)
+    {
+        // Update the waiting zone to be the LHS
+        stream->waitingzone = stream->waitingzone->u.command[0];
+        // Add it to the next slot in the array
+        stream->carray[stream_index] = stream->waitingzone;
+        stream_index++;
     }
     stream->timesread = 0;
     stream->numcmds = stream_index;
+    // free(stream->waitingzone);
     return stream;
 }
 
@@ -776,12 +931,15 @@ command_t read_command_stream (command_stream_t s)
     /* FIXME: Replace this with your implementation too.  */
     // We'll have an array of command_t, and this function will return 
     // the next command to be printed (in the tree like format).
-    
+
     // Probably going to need to use recursion for subshells, but we'll see...
     if (s->timesread >= s->numcmds)
         return 0;
     
     command_t retvalue = s->carray[s->timesread];
+    // free(s->carray[s->timesread]);
     s->timesread++;
+    // Free all of the memory we're using in the command stream HERE
+    // free(s->waitingzone);
     return retvalue;
 }
