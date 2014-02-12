@@ -26,29 +26,6 @@
 // Words, consisting of a maximal sequence of one or more adjacent characters that are 
 // ASCII letters (either upper or lower case), digits, or any of: ! % + , - . / : @ ^ _
 
-
-
-struct command_stream
-{
-    command_t* carray; // pointer to an array of command_t objects, 
-                       // which are just pointers to 'struct command's
-    // command_t* waitingzone; // for incomplete commands
-    // Better implementation of waiting zone is just one command
-    command_t waitingzone;
-    
-    int timesread;
-    int numcmds; // number of commands in a stream
-    // int* hp; // highest priority in each line?? hp[0] = 5; hp[1] = 3;
-
-    // For cases like
-    // a<b>c|d<e>f|g<h>i
-    // we're going to need to know how many <'s >'s and |'s there are AHEAD of time
-
-    // To be used for checking syntax
-    int valid_syntax;
-    int num_parentheses; // balanced open and closed parentheses, ++ if ( and -- if )
-                              // desired result should therefore be 0
-};
 // This function determines if a char c can be part of a word, 
 // according to our shell grammar/syntax.
 int is_word(const char* c)
@@ -60,98 +37,71 @@ int is_word(const char* c)
         return 0; // FALSE, this char can NOT be part of a word
 }
 
-enum token_type
-{
-    WORD,
-    LOGICAND,
-    LOGICOR, // && and ||
-    SUBSHELL,
-    COMMENT,
-    I,
-    O,
-    PIPE,
-    NEWLINE,
-    SEMICOLON,
-    //EOF,
-};
-typedef struct
-{
-    enum token_type type;
-    union
-    {
-        char* word; // For words and operators
-        char symbol; // For everything else, if needed
-    } data;
-} token;
-typedef struct
-{
-    token* tokarray;
-    int size; // size of token array
-} token_stream;
-
-void free_token_stream(token_stream* t)
-{
-    // Need to free the tokarray
-    // Need to free each individual token, depending on size
+// void free_token_stream(token_stream* t)
+// {
+//     // Need to free the tokarray
+//     // Need to free each individual token, depending on size
     
-    int i;
-    printf("Beginning free.\n");
-    for (i = 0; i < t->size; i++)
-    {
-        enum token_type type = t->tokarray[i].type;
-        if (type == WORD || type == LOGICOR || type == LOGICAND)
-        {
-            if (t->tokarray[i].data.word)
-            {
-                printf("Freeing token %d data.word\n",i);
-                free(t->tokarray[i].data.word);
-                t->tokarray[i].data.word = NULL;
-            }
-        }
-        else // if (t->tokarray[i].data.symbol) // If it's a symbol < >
-        {
-            // We don't need to free anything
-            // if (t->tokarray[i].data.symbol)
-            // {
-            //     printf("Freeing token %d data.symbol\n",i);
-            //     free(t->tokarray[i].data.symbol);
-            //     t->tokarray[i].data.symbol = NULL;
-            // }
-        }
-    }
+//     int i;
+//     printf("Beginning free.\n");
+//     for (i = 0; i < t->size; i++)
+//     {
+//         enum token_type type = t->tokarray[i].type;
+//         if (type == WORD || type == LOGICOR || type == LOGICAND)
+//         {
+//             if (t->tokarray[i].data.word)
+//             {
+//                 printf("Freeing token %d data.word\n",i);
+//                 free(t->tokarray[i].data.word);
+//                 t->tokarray[i].data.word = NULL;
+//             }
+//         }
+//         else // if (t->tokarray[i].data.symbol) // If it's a symbol < >
+//         {
+//             // We don't need to free anything
+//             // if (t->tokarray[i].data.symbol)
+//             // {
+//             //     printf("Freeing token %d data.symbol\n",i);
+//             //     free(t->tokarray[i].data.symbol);
+//             //     t->tokarray[i].data.symbol = NULL;
+//             // }
+//         }
+//     }
 
-    if (t->tokarray)
-    {
-        printf("Freeing the tokarray.\n");
-        free(t->tokarray);
-        t->tokarray = NULL;
-    }
-    free(t);
-    t = NULL;
+//     if (t->tokarray)
+//     {
+//         printf("Freeing the tokarray.\n");
+//         free(t->tokarray);
+//         t->tokarray = NULL;
+//     }
+//     free(t);
+//     t = NULL;
     
-    return;
-}
+//     return;
+// }
 
 // If it succeeds, this function accepts a char array and returns a token_stream
 // If it fails (because of bad syntax), this function will return NULL.
-token_stream* tokenize(const char* line, const int linesize)
+void tokenize(const char* line, const int linesize, token_stream* ts)
 {
     // int sizeguess = 50;
-    int sizeguess = linesize;
-    token_stream* ts = (token_stream*)checked_malloc(sizeof(token_stream));
-    // These will be the fields of the token stream at the very end (easier to read)
-    token* a = (token*)checked_malloc(sizeof(token)*sizeguess);
+    // int sizeguess = linesize;
+    // if (ts != NULL)
+    // {
+    //     free(ts);
+    //     ts = NULL;
+    // }
+    
     int tasize = 0;
-
     int nt = 0; // number of tokens
     int c = 0; // which char in line[c]
-    int w;
+    int w = 0; // which word
     // cat < a || ls foo > b
     for (; c < linesize; )
     {
         if (is_word(&line[c]))
         {
-            int w = 0;
+            w = 0;
             int charscap = 15;
             char* word = (char*)checked_malloc(sizeof(char)*charscap);
             while (is_word(&line[c]))
@@ -214,8 +164,8 @@ token_stream* tokenize(const char* line, const int linesize)
                 c += 2;
                 tasize++;
             }
-            else
-                return NULL; // Return NULL, our shell doesn't support this grammar
+            // else
+                // return NULL; // Return NULL, our shell doesn't support this grammar
         }
         else if (line[c] == ';')
         {
@@ -242,7 +192,7 @@ token_stream* tokenize(const char* line, const int linesize)
     // Set the tokenstream fields
     ts->tokarray = a;
     ts->size = tasize;
-    return ts;
+    // return ts;
 }
 
 /*************************
@@ -287,63 +237,6 @@ int precedence(const token t)
     return -1;       
 }
 
-/* **********************
- * COMMAND STACK STRUCT *
- ************************/ 
-
-// Stack struct with an array of command structs
-typedef struct 
-{
-    struct command* con;    // SEE command-internals.h
-    int top;        // -1 = EMPTY
-    //int size;
-} cmd_stack_struct;
-
-// Stack function - PUSH
-void push_cmd(cmd_stack_struct *stack, struct command content)
-{
-    stack->top++;
-    stack->con[stack->top] = content;
-}
-
-// Stack fucntion - POP
-// returns a command 
-struct command pop_cmd(cmd_stack_struct *stack)
-{
-    int poptop = stack->top;
-    stack->top--;
-    return stack->con[poptop];
-}
-
-
-/**********************
- * TOKEN STACK STRUCT *
- **********************/
-
-// Stack struct with an array of token structs
-typedef struct 
-{
-    token *con;
-    int top;    // -1 = EMPTY
-    //int size;
-    //int *holder;    // an array of ints that holds the place of the operator 
-} tok_stack_struct;
-
-// Stack function - PUSH
-void push_tok(tok_stack_struct *stack, token content)
-{
-    stack->top++;
-    stack->con[stack->top] = content;
-}
-
-// Stack fucntion - POP
-// returns a token
-token pop_tok(tok_stack_struct *stack)
-{
-    int poptop = stack->top;
-    stack->top--;
-    return stack->con[poptop];
-}
 int cmd_priority(const struct command* P)
 {
     switch(P->type)
@@ -362,21 +255,47 @@ int cmd_priority(const struct command* P)
     }
     return -1; // if failure
 }
-// int determine_stackpops(const cmd_stack_struct* c_stack, const tok_stack_struct* o_stack)
-// {
-//     // opstack is guaranteed to have at least one thing in it
-//     int csize = c_stack->top + 1;
-//     int opsize = o_stack->top + 1;
-//     if (opsize == 1 && csize > 1)
-//         return 2;
-//     else
-//     {   
-//         if (csize == 1)
-//             return 1;
-//     }
+// Stack function - PUSH
+void push_cmd(cmd_stack_struct *stack, struct command content)
+{
+    if (stack->top >= stack->capacity)
+    {
+        stack->capacity *= 2;
+        stack = checked_realloc(stack, stack->capacity);
+    }
+    stack->top++;
+    stack->con[stack->top] = content;
+}
 
-//     return 0;
-// }
+// Stack fucntion - POP
+// returns a command 
+struct command pop_cmd(cmd_stack_struct *stack)
+{
+    int poptop = stack->top;
+    stack->top--;
+    return stack->con[poptop];
+}
+// Stack function - PUSH
+void push_tok(tok_stack_struct *stack, token content)
+{
+    if (stack->top >= stack->capacity)
+    {
+        stack->capacity *= 2;
+        stack = checked_realloc(stack, stack->capacity);
+    }
+    stack->top++;
+    stack->con[stack->top] = content;
+}
+
+// Stack fucntion - POP
+// returns a token
+token pop_tok(tok_stack_struct *stack)
+{
+    int poptop = stack->top;
+    stack->top--;
+    return stack->con[poptop];
+}
+
 /*************************
 *PARSING HELPER FUNCTIONS*
 *************************/
@@ -520,7 +439,7 @@ struct command* join(struct command* LHS, struct command* RHS)
 // Shit, maybe even a command_stream_t needs to declare both stacks in itself,
 // yeah, that's good, I love it
 
-struct command* parse(token_stream *ts, cmd_stack_struct* cmdstack, tok_stack_struct* opstack)
+struct command parse(token_stream *ts, cmd_stack_struct* cmdstack, tok_stack_struct* opstack)
 {   
     // Simplify
     int maxsize = ts->size;
@@ -780,30 +699,46 @@ struct command* parse(token_stream *ts, cmd_stack_struct* cmdstack, tok_stack_st
 command_stream_t make_command_stream (int (*get_next_byte) (void *),
               void *get_next_byte_argument)
 {
-    int i = 0;
-    int stream_index = 0;
-    int wi = 0; // 0 if there isn't a command waiting, 1 if there is
-    // Allocate space for the command stream
-    // NOTE: A command_stream_t is a POINTER to a struct command_stream
-    command_stream_t stream = (command_stream_t)checked_malloc(sizeof(struct command_stream));
-    // Initialize command stream
-    int commandcap = 100; // Assume a file will have no more than 100 commands
-    int cmd_count = 0; // Counter for the number of commands in one file
+
+    // // Initialize TOKEN STREAM
+    // token_stream* ts = (token_stream*)checked_malloc(sizeof(token_stream));
+    // int guess_num_tokens = 64;
+    // ts->tokarray = (token*)checked_malloc(sizeof(token)*guess_num_tokens);
+    // ts = 0;
+    // ts->size = 0;
+
+
+    // Initialize COMMAND STREAM 
+    command_stream_t cs = (command_stream_t)checked_malloc(sizeof(struct command_stream));
+     // Assume a file will have no more than 32 root commands
+    // int cmd_count = 0; // Counter for the number of commands in one file
+    int commandcap = 64;
     int cmd_it = 0; // iterator for finding the next command in a line
-    stream->carray = (command_t*)checked_malloc(sizeof(command_t)*commandcap);
-    stream->valid_syntax = 1;
-    stream->waitingzone = (command_t)checked_malloc(sizeof(command_t));
+    cs->carray = (command_t)checked_malloc(sizeof(struct command)*commandcap);
+    cs->stream_index = 0;
+    cs->waitingzone = 0; // might need to change this line
+    cs->wi = 0;
+    cs->timesread = 0;
+    cs->numcmds = 0;
+    cs->valid_syntax = 0; // -1 if bad, 0 if good
+    cs->num_parentheses = 0;
 
-    // We need a commandstack, and we need an operatorstack
+    
+    // Initialize COMMAND STACK
     cmd_stack_struct* cmdstack = (cmd_stack_struct*)checked_malloc(sizeof(cmd_stack_struct));
-    tok_stack_struct* opstack = (tok_stack_struct*)checked_malloc(sizeof(tok_stack_struct));
-    int stacksizes = 100;
-
-    cmdstack->con = (struct command*)checked_malloc(sizeof(struct command)*(stacksizes));
+    cmdstack->capacity = 128;
+    cmdstack->con = (struct command*)checked_malloc(sizeof(struct command)*(cmdstack->capacity));
     cmdstack->top = -1;  // EMPTY
-    opstack->con = (token*)checked_malloc(sizeof(token)*(stacksizes));
+
+
+    // Initialize OPERATOR STACK
+    tok_stack_struct* opstack = (tok_stack_struct*)checked_malloc(sizeof(tok_stack_struct));
+    opstack->capacity = 128;
+    opstack->con = (token*)checked_malloc(sizeof(token)*(opstack->capacity));
     opstack->top = -1;   // EMPTY
 
+
+    int i = 0;
     char byte = get_next_byte(get_next_byte_argument);
     // As long as we haven't reached the end of the file, keep getting the next character
     while (byte != EOF)
@@ -817,7 +752,10 @@ command_stream_t make_command_stream (int (*get_next_byte) (void *),
             int char_cap = 200; // Assume a line will have no more than 200 characters
             int char_count = 0; // Counter for the number of characters in one line
             
-            char* line = (char *)checked_malloc(sizeof(char)*char_cap); // Free this after command is parsed
+            char* line = (char *)checked_malloc(sizeof(char)*char_cap); // FREE AT LAST
+            for (i = 0; i < char_cap; i++) // Initialize line, might not be necessary
+                line[i] = 0;
+
             while (byte != '\n')
             {
                 // Doesn't matter what the byte is, just put it in the line
@@ -846,11 +784,17 @@ command_stream_t make_command_stream (int (*get_next_byte) (void *),
             // At this point, all of the bytes in one line are in this "line" array.
             // Now we have to parse them into separate commands, from left to right.
             // THEN, once they're "commanndified", then we can order them on priority.
-    /////////////////////////////////////////////////////////////////////////////////
+    
             // 1. Turn this array of chars into an array of TOKENS.
-            token_stream* ts;
-            //// printf("Calling tokenize now\n");
-            ts = tokenize(line, char_count); // TOKENIZE!!!!!!!!!!
+
+            // Initialize TOKEN STREAM
+            token_stream* ts = (token_stream*)checked_malloc(sizeof(token_stream));
+            int guess_num_tokens = 64;
+            ts->tokarray = (token*)checked_malloc(sizeof(token)*guess_num_tokens);
+            ts = 0;
+            ts->size = 0;
+
+            tokenize(line, char_count, ts);
             //// printf("Success!\n");
             // // printf("Testing: Print the tokenarray\n\n");
             // for (i = 0; i < ts->size; i++)
@@ -864,7 +808,7 @@ command_stream_t make_command_stream (int (*get_next_byte) (void *),
             //         // printf("%c\n", ts->tokarray[i].data.symbol);
             // }
             // // printf("Calling parser now\n");
-            command_t rootcommand = parse(ts, cmdstack, opstack); // PARSIFY!!!!
+            struct command rootcommand = parse(ts, cmdstack, opstack); // PARSIFY!!!!
             
             // free_token_stream(ts);
             
@@ -902,7 +846,7 @@ command_stream_t make_command_stream (int (*get_next_byte) (void *),
                 }
             }
             free(line);
-            free_token_stream(ts);
+            // free_token_stream(ts);
         }
 
     }
@@ -918,8 +862,8 @@ command_stream_t make_command_stream (int (*get_next_byte) (void *),
         stream->carray[stream_index] = stream->waitingzone;
         stream_index++;
     }
-    stream->timesread = 0;
-    stream->numcmds = stream_index;
+    // stream->timesread = 0;
+    // stream->numcmds = stream_index;
     // free(stream->waitingzone);
     return stream;
 }
