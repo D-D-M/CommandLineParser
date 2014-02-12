@@ -6,6 +6,7 @@
 // Add your own include directives
 #include <stdlib.h> // malloc the command stream
 #include <stdio.h> // end of file
+#include <string.h>
 #include "alloc.h" // checked malloc
 #include <ctype.h> // dchecking for alpha numeric characters
 /*
@@ -115,43 +116,47 @@ void tokenize(const char* line, const int linesize, token_stream* ts)
                     word = checked_realloc(word, charscap);
                 }
             }
-            // word[w] = '\0'; // null terminator
+            word[w] = '\0'; // null terminator
             // // printf("%s\n",word);
             // Put that word in the tokenarray, update token
             // // printf("tasize %d\n", tasize);
-            a[tasize].type = WORD;
-            a[tasize].data.word = word;
+            ts->tokarray[tasize].type = WORD;
+            // ts->tokarray[tasize].data.word = word;
+            strcpy(ts->tokarray[tasize].data, word);
+            free(word);
             tasize++;
-            // free(word);
         }
         else if (line[c] == '#')
             c = linesize; // Comment means we can stop
         else if (line[c] == '<') // IO
         {
-            a[tasize].type = I;
-            a[tasize].data.symbol = line[c];
+            ts->tokarray[tasize].type = I;
+            // a[tasize].data.symbol = line[c];
+            strcpy(ts->tokarray[tasize].data, "<");
             // a[tasize].data.word = &line[c];
             c++; tasize++;
         }
         else if (line[c] == '>')
         {
-            a[tasize].type = O;
-            a[tasize].data.symbol = line[c];
+            ts->tokarray[tasize].type = O;
+            // a[tasize].data.symbol = line[c];
+            strcpy(ts->tokarray[tasize].data, ">");
             c++; tasize++;
         }
         else if (line[c] == '|')
         {
             if (line[c+1] == '|') // if the next one is also a pipe, we've got OR
             {
-                a[tasize].type = LOGICOR;
-                a[tasize].data.word = "||\0";
+                ts->tokarray[tasize].type = LOGICOR;
+                // a[tasize].data.word = "||\0";
+                strcpy(ts->tokarray[tasize].data, "||");
                 c += 2; 
                 tasize++;
             }
             else // otherwise, we have a pipe
             {
-                a[tasize].type = PIPE;
-                a[tasize].data.symbol = line[c];
+                ts->tokarray[tasize].type = PIPE;
+                strcpy(ts->tokarray[tasize].data, "|");
                 c++; tasize++;
             }
         }
@@ -159,40 +164,41 @@ void tokenize(const char* line, const int linesize, token_stream* ts)
         {
             if (line[c+1] == '&')
             {
-                a[tasize].type = LOGICAND;
-                a[tasize].data.word = "&&\0";
+                ts->tokarray[tasize].type = LOGICAND;
+                strcpy(ts->tokarray[tasize].data, "&&");
                 c += 2;
                 tasize++;
             }
-            // else
-                // return NULL; // Return NULL, our shell doesn't support this grammar
+            else
+            {
+                // Might want to consider:
+                // return;
+                // ^here instead, so that the command stream can be set to invalid
+                exit(1); // Invalid syntax, do not support
+            }
         }
         else if (line[c] == ';')
         {
-            a[tasize].type = SEMICOLON;
-            a[tasize].data.symbol = line[c];
+            ts->tokarray[tasize].type = SEMICOLON;
+            strcpy(ts->tokarray[tasize].data, ";");
             c++; tasize++;
         }
         else if (line[c] == '(' || line[c] == ')')
         {   
-            a[tasize].type = SUBSHELL;
-            a[tasize].data.symbol = line[c];
+            ts->tokarray[tasize].type = SUBSHELL;
+            strcpy(ts->tokarray[tasize].data, &line[c]);
             c++; tasize++;
         }
         else if (line[c] == '\n')
         {
-            a[tasize].type = NEWLINE;
-            a[tasize].data.symbol = line[c];
+            ts->tokarray[tasize].type = NEWLINE;
+            strcpy(ts->tokarray[tasize].data, "\n");
             c++; tasize++;
         }
         else
             c++; // For now, we just won't put it into the tokenarray  
     }
-
-    // Set the tokenstream fields
-    ts->tokarray = a;
-    ts->size = tasize;
-    // return ts;
+    return;
 }
 
 /*************************
@@ -220,21 +226,23 @@ int precedence(const token t)
     switch(t.type)
     {
         case PIPE:
-          return 3;
+            return 3;
         case LOGICOR:
         case LOGICAND:
-          return 2;
+            return 2;
         case SEMICOLON:
-          return 1; 
-        case WORD:
-        case SUBSHELL:
-        case COMMENT:
-        case I:
-        case O:
-        case NEWLINE:
-         return 0;
+            return 1; 
+        // case WORD:
+        // case SUBSHELL:
+        // case COMMENT:
+        // case I:
+        // case O:
+        // case NEWLINE:
+        case INITIAL:
+            return -1;
+        default:
+            return 0;
     }
-    return -1;       
 }
 
 int cmd_priority(const struct command* P)
@@ -252,8 +260,9 @@ int cmd_priority(const struct command* P)
             return 3;
         case SUBSHELL_COMMAND:
             return 4;
+        default:
+            return -1;
     }
-    return -1; // if failure
 }
 // Stack function - PUSH
 void push_cmd(cmd_stack_struct *stack, struct command content)
@@ -307,11 +316,16 @@ void parse_input(struct command* cmd, const token_stream* ts, cmd_stack_struct* 
         // Furthermore, if the NEXT next token is >
         if (tarray[*ti+1].type == O)
         {
-            cmd->input = tarray[*ti].data.word; // For sure we have input
+            // cmd->input = tarray[*ti].data; // For sure we have input
+            strcpy(cmd->input, tarray[*ti].data);
+            free(tarray[*ti].data);
+            tarray[*ti].data = NULL;
             *ti+=2;
             if (tarray[*ti].type == WORD)
             {
-                cmd->output = tarray[*ti].data.word;
+                strcpy(cmd->output, tarray[*ti].data);
+                free(tarray[*ti].data);
+                tarray[*ti].data = NULL;
                 cmd->status = 1;
                 *ti++;
                 return;
@@ -324,7 +338,9 @@ void parse_input(struct command* cmd, const token_stream* ts, cmd_stack_struct* 
         }
         else // THE ELSE IS WHAT WORKED BEFORE
         {
-            cmd->input = tarray[*ti].data.word;
+            strcpy(cmd->input, tarray[*ti].data);
+            free(tarray[*ti].data);
+            tarray[*ti].data = NULL;
             cmd->output = NULL;
             cmd->status = 1; // complete command
             *ti++;
@@ -334,7 +350,7 @@ void parse_input(struct command* cmd, const token_stream* ts, cmd_stack_struct* 
     else // This means that < was the last character on a line, resulting in an error
     {
         cmd->status = -1;
-        // exit(1);
+        exit(1);
     }
     return;
 }
@@ -344,7 +360,9 @@ void parse_output(struct command* cmd, const token_stream* ts, cmd_stack_struct*
     if (tarray[*ti].type == WORD)
     {
         cmd->input = NULL;
-        cmd->output = tarray[*ti].data.word;
+        strcpy(cmd->output, tarray[*ti].data);
+        free(tarray[*ti].data);
+        tarray[*ti].data = NULL;
         cmd->status = 1;
         *ti++;
         return;
@@ -357,7 +375,7 @@ void parse_output(struct command* cmd, const token_stream* ts, cmd_stack_struct*
 * JOIN *
 ********/
 // This function takes a 'waiting' LHS command and joins it with a RHS command
-struct command* join(struct command* LHS, struct command* RHS)
+struct command join(struct command* LHS, struct command* RHS)
 {
     // How we join the commands depends on the precedence of the two commands
     // Precedence function takes tokens
@@ -390,7 +408,7 @@ struct command* join(struct command* LHS, struct command* RHS)
                 LHS->status = 1;
                 LHS = LHS->u.command[1];
             }
-            return RHS;
+            return *RHS;
         }
         else
         {
@@ -404,7 +422,7 @@ struct command* join(struct command* LHS, struct command* RHS)
                 LHS = LHS->u.command[1];
             }
             // return LHS;
-            return LROOT;
+            return *LROOT;
         }
     }
     // Else if it's just a simple command
@@ -420,12 +438,12 @@ struct command* join(struct command* LHS, struct command* RHS)
                 LHS = LHS->u.command[1];
             }
         // return LHS;
-        return LROOT;
+        return *LROOT;
     }
     else // SUBSHELL COMMAND!
     {
         printf("Subshell command!\n");
-        return 0;
+        return *LHS;
     }
 }
 
@@ -439,13 +457,11 @@ struct command* join(struct command* LHS, struct command* RHS)
 // Shit, maybe even a command_stream_t needs to declare both stacks in itself,
 // yeah, that's good, I love it
 
-struct command parse(token_stream *ts, cmd_stack_struct* cmdstack, tok_stack_struct* opstack)
+void parse(token_stream *ts, cmd_stack_struct* cmdstack, tok_stack_struct* opstack, command_t root)
 {   
     // Simplify
     int maxsize = ts->size;
     token* tarray = ts->tokarray;
-    // This function will return 'root'
-    struct command* root = (command_t)checked_malloc(sizeof(struct command)*maxsize);
 
     int ti;                     // token iterator 
 
@@ -474,75 +490,12 @@ struct command parse(token_stream *ts, cmd_stack_struct* cmdstack, tok_stack_str
             while(tarray[ti].type == WORD)
             {
                 // Word isn't being set properly
-                cmd->u.word[z] = tarray[ti].data.word;
+                // cmd->u.word[z] = tarray[ti].data.word;
+                strcpy(cmd->u.word[z], tarray[ti].data);
+                free(tarray[ti].data);
+                tarray[ti].data = NULL;
                 ti++; z++;
             }
-            /*
-            if (tarray[ti].type == I)
-            {
-                if (tarray[ti+1].type == WORD)
-                {
-                    // Furthermore, if the NEXT next token is >
-                    if (tarray[ti+2].type == O)
-                    {
-                        cmd->input = tarray[ti+1].data.word;
-                        if (tarray[ti+3].type == WORD)
-                        {
-                            cmd->output = tarray[ti+3].data.word;
-                            cmd->status = 1;
-                            ti+=2; // Just trust me on this one
-                        }
-                        else
-                        {
-                            cmd->status = 0;
-                        }
-                        ti++;
-                    }
-                    else // THE ELSE IS WHAT WORKED BEFORE
-                    {
-                        cmd->input = tarray[ti+1].data.word;
-                        cmd->output = NULL;
-                        ti++;
-                        // ti+=2;
-                        cmd->status = 1; // complete command
-                    }
-                }
-                else
-                {
-                    if (tarray[ti+1].type == NEWLINE)
-                        cmd->status = 0; // incomplete command
-                    else
-                        cmd->status = -1; // error (we think) might just return NULL;
-                }
-            }
-            else if (tarray[ti].type == O)
-            {
-                if (tarray[ti+1].type == WORD)
-                {
-                    // // Only set input to NULL if cmd->status is 0, if it's incomplete
-                    // if (cmd->status == 0)
-                    // {
-                    //     cmd->input = NULL;
-                    // }
-                    // else // a b<c > d
-                    // {
-                    //     // Input has already been set by the input operator above, so we're good
-                    //     ;
-                    // }
-                    cmd->input = NULL;
-                    cmd->output = tarray[ti+1].data.word;
-                    ti++;
-                    cmd->status = 1; // complete command
-                }
-                else
-                {
-                    if (tarray[ti+1].type == NEWLINE)
-                        cmd->status = 0; // incomplete command
-                    else
-                        cmd->status = -1; // error (we think)
-                }
-            }
-            */
             if (tarray[ti].type == I)           // INPUT < SYMBOL
             {
                 ti++;
@@ -607,13 +560,15 @@ struct command parse(token_stream *ts, cmd_stack_struct* cmdstack, tok_stack_str
                     case NEWLINE:
                         // cmd->type = SEQUENCE_COMMAND;
                         break;
-                    case WORD:
-                    case SUBSHELL:
-                    case COMMENT:
-                    case I:
-                    case O:
-                        // printf("Parse returning NULL now\n");
-                        return NULL; 
+                    // case WORD:
+                    // case SUBSHELL:
+                    // case COMMENT:
+                    // case I:
+                    // case O:
+                    //     // printf("Parse returning NULL now\n");
+                    //     return NULL; 
+                    default:
+                        exit(1);
                 }
                 cmd->input = NULL;
                 cmd->output = NULL;
@@ -692,13 +647,24 @@ struct command parse(token_stream *ts, cmd_stack_struct* cmdstack, tok_stack_str
     // printf("root status is %d\n", root->status);
     // if (root->)
     // // printf("Is root null? Check: %p\n", root);
-    return root;
+    // return root;
+}
+
+void initialize_cmd(struct command* c)
+{
+    c->type = NOT_A_COMMAND_YET;
+    c->status = 0;
+    c->input = 0;
+    c->output = 0;
+    // c->u.word = 0;
 }
 
 // This time, our implementation will be to read one line at a time
 command_stream_t make_command_stream (int (*get_next_byte) (void *),
               void *get_next_byte_argument)
 {
+    int i = 0;
+    
 
     // // Initialize TOKEN STREAM
     // token_stream* ts = (token_stream*)checked_malloc(sizeof(token_stream));
@@ -715,8 +681,12 @@ command_stream_t make_command_stream (int (*get_next_byte) (void *),
     int commandcap = 64;
     int cmd_it = 0; // iterator for finding the next command in a line
     cs->carray = (command_t)checked_malloc(sizeof(struct command)*commandcap);
+    for (i = 0; i < commandcap; i++)
+    { // Initialize each command
+        initialize_cmd(&cs->carray[i]);
+    }
     cs->stream_index = 0;
-    cs->waitingzone = 0; // might need to change this line
+    initialize_cmd(&cs->waitingzone); // might need to change this line
     cs->wi = 0;
     cs->timesread = 0;
     cs->numcmds = 0;
@@ -738,7 +708,7 @@ command_stream_t make_command_stream (int (*get_next_byte) (void *),
     opstack->top = -1;   // EMPTY
 
 
-    int i = 0;
+    
     char byte = get_next_byte(get_next_byte_argument);
     // As long as we haven't reached the end of the file, keep getting the next character
     while (byte != EOF)
@@ -791,8 +761,13 @@ command_stream_t make_command_stream (int (*get_next_byte) (void *),
             token_stream* ts = (token_stream*)checked_malloc(sizeof(token_stream));
             int guess_num_tokens = 64;
             ts->tokarray = (token*)checked_malloc(sizeof(token)*guess_num_tokens);
-            ts = 0;
-            ts->size = 0;
+            // Might need to initialize each individual token here
+            for(i = 0; i < guess_num_tokens; i++)
+            {
+                ts->tokarray[i].data = "";
+                ts->tokarray[i].type = INITIAL;
+            }
+            ts->size = 0;            
 
             tokenize(line, char_count, ts);
             //// printf("Success!\n");
@@ -808,43 +783,56 @@ command_stream_t make_command_stream (int (*get_next_byte) (void *),
             //         // printf("%c\n", ts->tokarray[i].data.symbol);
             // }
             // // printf("Calling parser now\n");
-            struct command rootcommand = parse(ts, cmdstack, opstack); // PARSIFY!!!!
             
-            // free_token_stream(ts);
+            struct command* p_rootcommand = (command_t)checked_malloc(sizeof(struct command));
+            parse(ts, cmdstack, opstack, p_rootcommand); // PARSIFY!!!!
             
+            // Now that we have the rootcommand*, we need to copy its values into an actual command
+            // and put that command in carray if it's complete.
+            struct command rootcommand = *p_rootcommand;
+
+            // Possibly free the token stream here:            
+            // free(ts->tokarray);
+            // free(ts);
+
             // // printf("Parser exited!\n");
-            if (rootcommand->status == 1)
+            if (rootcommand.status == 1)
             {
-                if (stream_index >= commandcap)
+                if (cs->stream_index >= commandcap)
                 {
                     commandcap *= 2;
-                    stream->carray = checked_realloc(stream->carray, commandcap);
+                    cs->carray = checked_realloc(cs->carray, commandcap);
                 }
                 
-                if (wi) // If there is a command waiting, join it!
+                if (cs->wi) // If there is a command waiting, join it!
                 {
-                    rootcommand = join(stream->waitingzone, rootcommand);
-                    wi = 0;
+                    rootcommand = join(&cs->waitingzone, &rootcommand);
+                    cs->wi = 0;
                 }
-                stream->carray[stream_index] = rootcommand;
-                stream_index++;
+                cs->carray[cs->stream_index] = rootcommand;
+                cs->stream_index++;
             }
             else // INCOMPLETE COMMAND: we should either stage it for waiting, or join it with
                  // the thing that's currently waiting
             {
-                if (wi) // If we're already waiting on something, join those two things
+                if (cs->wi) // If we're already waiting on something, join those two things
                 {
                     // printf("Joining\n");
-                    stream->waitingzone = join(stream->waitingzone, rootcommand);
-                    wi = 1;
+                    cs->waitingzone = join(&cs->waitingzone, &rootcommand);
+                    cs->wi = 1;
                 }
                 else // There's nothing to be waited on.
                 {
                     // printf("Add to waiting zone\n");
-                    stream->waitingzone = rootcommand;
-                    wi = 1;
+                    cs->waitingzone = rootcommand;
+                    cs->wi = 1;
                 }
             }
+            // for (i = 0; i < char_count; i++)
+            // {
+            //     free(line[i]);
+            //     line[i] = NULL;
+            // }
             free(line);
             // free_token_stream(ts);
         }
@@ -854,18 +842,18 @@ command_stream_t make_command_stream (int (*get_next_byte) (void *),
     // then we're not actually waiting for anything, and we can add this command
     // to the next slot in carray.
     //
-    if (stream->waitingzone->type == SEQUENCE_COMMAND)
+    if (cs->waitingzone.type == SEQUENCE_COMMAND)
     {
         // Update the waiting zone to be the LHS
-        stream->waitingzone = stream->waitingzone->u.command[0];
+        cs->waitingzone = *(cs->waitingzone.u.command[0]);
         // Add it to the next slot in the array
-        stream->carray[stream_index] = stream->waitingzone;
-        stream_index++;
+        cs->carray[cs->stream_index] = cs->waitingzone;
+        cs->stream_index++;
     }
     // stream->timesread = 0;
     // stream->numcmds = stream_index;
     // free(stream->waitingzone);
-    return stream;
+    return cs;
 }
 
 
@@ -880,7 +868,7 @@ command_t read_command_stream (command_stream_t s)
     if (s->timesread >= s->numcmds)
         return 0;
     
-    command_t retvalue = s->carray[s->timesread];
+    command_t retvalue = &s->carray[s->timesread];
     // free(s->carray[s->timesread]);
     s->timesread++;
     // Free all of the memory we're using in the command stream HERE

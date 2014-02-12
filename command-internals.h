@@ -9,7 +9,8 @@ enum command_type
     OR_COMMAND,          
     PIPE_COMMAND,        
     SIMPLE_COMMAND,      
-    SUBSHELL_COMMAND,    
+    SUBSHELL_COMMAND,
+    NOT_A_COMMAND_YET,    
 };
 
 // Data associated with a command.
@@ -92,6 +93,7 @@ enum token_type
     PIPE,
     NEWLINE,
     SEMICOLON,
+    INITIAL,
     //EOF,
 };
 
