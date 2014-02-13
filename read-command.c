@@ -93,7 +93,7 @@ void tokenize(const char* line, const int linesize, token_stream* ts)
     //     ts = NULL;
     // }
     
-    int tasize = 0;
+    // int ts->size = 0;
     int nt = 0; // number of tokens
     int c = 0; // which char in line[c]
     int w = 0; // which word
@@ -119,55 +119,87 @@ void tokenize(const char* line, const int linesize, token_stream* ts)
             word[w] = '\0'; // null terminator
             // // printf("%s\n",word);
             // Put that word in the tokenarray, update token
-            // // printf("tasize %d\n", tasize);
-            ts->tokarray[tasize].type = WORD;
-            // ts->tokarray[tasize].data.word = word;
-            strcpy(ts->tokarray[tasize].data, word);
+            // // printf("ts->size %d\n", ts->size);
+            ts->tokarray[ts->size].type = WORD;
+            // ts->tokarray[ts->size].data.word = word;
+            strcpy(ts->tokarray[ts->size].data, word);
             free(word);
-            tasize++;
+            ts->size++;
         }
         else if (line[c] == '#')
             c = linesize; // Comment means we can stop
         else if (line[c] == '<') // IO
         {
-            ts->tokarray[tasize].type = I;
-            // a[tasize].data.symbol = line[c];
-            strcpy(ts->tokarray[tasize].data, "<");
-            // a[tasize].data.word = &line[c];
-            c++; tasize++;
+            if (c+2 < linesize) // to make sure we don't go inspecting null pointers
+            {
+                if (line[c+1] == '<' && line[c+2] == '<')
+                {
+                    fprintf(stderr,"Invalid syntax\n");
+                    exit(1);
+                }
+            }
+            ts->tokarray[ts->size].type = I;
+            // a[ts->size].data.symbol = line[c];
+            strcpy(ts->tokarray[ts->size].data, "<");
+            // a[ts->size].data.word = &line[c];
+            c++; ts->size++;
         }
         else if (line[c] == '>')
         {
-            ts->tokarray[tasize].type = O;
-            // a[tasize].data.symbol = line[c];
-            strcpy(ts->tokarray[tasize].data, ">");
-            c++; tasize++;
+            if (c+2 < linesize) // to make sure we don't go inspecting null pointers
+            {
+                if (line[c+1] == '>' && line[c+2] == '>')
+                {
+                    fprintf(stderr,"Invalid syntax\n");
+                    exit(1);
+                }
+            }
+            ts->tokarray[ts->size].type = O;
+            // a[ts->size].data.symbol = line[c];
+            strcpy(ts->tokarray[ts->size].data, ">");
+            c++; ts->size++;
         }
         else if (line[c] == '|')
         {
+            if (c+2 < linesize) // to make sure we don't go inspecting null pointers
+            {
+                if (line[c+1] == '|' && line[c+2] == '|')
+                {
+                    fprintf(stderr,"Invalid syntax\n");
+                    exit(1);
+                }
+            }
             if (line[c+1] == '|') // if the next one is also a pipe, we've got OR
             {
-                ts->tokarray[tasize].type = LOGICOR;
-                // a[tasize].data.word = "||\0";
-                strcpy(ts->tokarray[tasize].data, "||");
+                ts->tokarray[ts->size].type = LOGICOR;
+                // a[ts->size].data.word = "||\0";
+                strcpy(ts->tokarray[ts->size].data, "||");
                 c += 2; 
-                tasize++;
+                ts->size++;
             }
             else // otherwise, we have a pipe
             {
-                ts->tokarray[tasize].type = PIPE;
-                strcpy(ts->tokarray[tasize].data, "|");
-                c++; tasize++;
+                ts->tokarray[ts->size].type = PIPE;
+                strcpy(ts->tokarray[ts->size].data, "|");
+                c++; ts->size++;
             }
         }
         else if (line[c] == '&')
         {
+            if (c+2 < linesize) // to make sure we don't go inspecting null pointers
+            {
+                if (line[c+1] == '&' && line[c+2] == '&')
+                {
+                    fprintf(stderr,"Invalid syntax\n");
+                    exit(1);
+                }
+            }
             if (line[c+1] == '&')
             {
-                ts->tokarray[tasize].type = LOGICAND;
-                strcpy(ts->tokarray[tasize].data, "&&");
+                ts->tokarray[ts->size].type = LOGICAND;
+                strcpy(ts->tokarray[ts->size].data, "&&");
                 c += 2;
-                tasize++;
+                ts->size++;
             }
             else
             {
@@ -179,25 +211,44 @@ void tokenize(const char* line, const int linesize, token_stream* ts)
         }
         else if (line[c] == ';')
         {
-            ts->tokarray[tasize].type = SEMICOLON;
-            strcpy(ts->tokarray[tasize].data, ";");
-            c++; tasize++;
+            ts->tokarray[ts->size].type = SEMICOLON;
+            strcpy(ts->tokarray[ts->size].data, ";");
+            c++; ts->size++;
         }
         else if (line[c] == '(' || line[c] == ')')
         {   
-            ts->tokarray[tasize].type = SUBSHELL;
-            strcpy(ts->tokarray[tasize].data, &line[c]);
-            c++; tasize++;
+            ts->tokarray[ts->size].type = SUBSHELL;
+            strcpy(ts->tokarray[ts->size].data, &line[c]);
+            c++; ts->size++;
         }
         else if (line[c] == '\n')
         {
-            ts->tokarray[tasize].type = NEWLINE;
-            strcpy(ts->tokarray[tasize].data, "\n");
-            c++; tasize++;
+            ts->tokarray[ts->size].type = NEWLINE;
+            strcpy(ts->tokarray[ts->size].data, "\n");
+            c++; ts->size++;
+        }
+        else if (line[c] == ' ' || line[c] == '\t')
+        {
+            c++;
         }
         else
-            c++; // For now, we just won't put it into the tokenarray  
+        {
+            fprintf(stderr,"Invalid syntax, unsupported token %c\n", line[c]);
+            exit(1);
+        }
     }
+
+    if (ts->tokarray[0].type == LOGICAND || 
+        ts->tokarray[0].type == LOGICOR ||
+        ts->tokarray[0].type == PIPE ||
+        ts->tokarray[0].type == SEMICOLON ||
+        ts->tokarray[0].type == I ||
+        ts->tokarray[0].type == O )
+    {
+        fprintf(stderr,"Invalid syntax, line cannot begin with %c \n",*ts->tokarray[0].data);
+        exit(1);
+    }
+
     return;
 }
 
@@ -272,6 +323,7 @@ void push_cmd(cmd_stack_struct *stack, struct command content)
         stack->capacity *= 2;
         stack = checked_realloc(stack, stack->capacity);
     }
+    // stack->con[stack->top] = (struct command)checked_malloc(sizeof(struct command));
     stack->top++;
     stack->con[stack->top] = content;
 }
@@ -305,6 +357,44 @@ token pop_tok(tok_stack_struct *stack)
     return stack->con[poptop];
 }
 
+void free_cmd(struct command* c)
+{
+    if (c->input)
+    {
+        free(c->input);
+        c->input = NULL;
+    }
+    if (c->output)
+    {
+        free(c->output);
+        c->output = NULL;
+    }
+    if (c->type == AND_COMMAND || c->type == SEQUENCE_COMMAND || c->type == OR_COMMAND 
+        || c->type == PIPE_COMMAND)
+    {
+        free(c->u.command[0]);
+        c->u.command[0] = NULL;
+        free(c->u.command[1]);
+        c->u.command[1] = NULL;
+    }
+    else if (c->type == SIMPLE_COMMAND)
+    {
+        int m = 0;
+        while (c->u.word[m] != NULL)
+        {
+            free(c->u.word[m]);
+            c->u.word[m] = NULL;
+        }
+        free(c->u.word);
+        c->u.word = NULL;
+    }
+    else // Recursively free subshell commands
+    {
+        free_cmd(c->u.subshell_command);
+    }
+    free(c);
+    return;
+}
 /*************************
 *PARSING HELPER FUNCTIONS*
 *************************/
@@ -317,12 +407,14 @@ void parse_input(struct command* cmd, const token_stream* ts, cmd_stack_struct* 
         if (tarray[*ti+1].type == O)
         {
             // cmd->input = tarray[*ti].data; // For sure we have input
+            cmd->input = checked_malloc(sizeof(char*));
             strcpy(cmd->input, tarray[*ti].data);
             free(tarray[*ti].data);
             tarray[*ti].data = NULL;
             *ti+=2;
             if (tarray[*ti].type == WORD)
             {
+                cmd->output = checked_malloc(sizeof(char*));
                 strcpy(cmd->output, tarray[*ti].data);
                 free(tarray[*ti].data);
                 tarray[*ti].data = NULL;
@@ -338,6 +430,7 @@ void parse_input(struct command* cmd, const token_stream* ts, cmd_stack_struct* 
         }
         else // THE ELSE IS WHAT WORKED BEFORE
         {
+            cmd->input = checked_malloc(sizeof(char*));
             strcpy(cmd->input, tarray[*ti].data);
             free(tarray[*ti].data);
             tarray[*ti].data = NULL;
@@ -350,6 +443,7 @@ void parse_input(struct command* cmd, const token_stream* ts, cmd_stack_struct* 
     else // This means that < was the last character on a line, resulting in an error
     {
         cmd->status = -1;
+        fprintf(stderr,"Invalid syntax\n");//, line cannot end with < \n");
         exit(1);
     }
     return;
@@ -360,6 +454,7 @@ void parse_output(struct command* cmd, const token_stream* ts, cmd_stack_struct*
     if (tarray[*ti].type == WORD)
     {
         cmd->input = NULL;
+        cmd->output = checked_malloc(sizeof(char*));
         strcpy(cmd->output, tarray[*ti].data);
         free(tarray[*ti].data);
         tarray[*ti].data = NULL;
@@ -368,14 +463,18 @@ void parse_output(struct command* cmd, const token_stream* ts, cmd_stack_struct*
         return;
     }
     else
-        cmd->status = -1;
+    {
+        fprintf(stderr,"Invalid syntax\n");
+        exit(1);
+    }
     return;
 }
 /*******
 * JOIN *
 ********/
 // This function takes a 'waiting' LHS command and joins it with a RHS command
-struct command join(struct command* LHS, struct command* RHS)
+struct command* join(struct command* LHS, struct command* RHS)
+// void join(struct command* LHS, struct command* RHS)
 {
     // How we join the commands depends on the precedence of the two commands
     // Precedence function takes tokens
@@ -384,7 +483,7 @@ struct command join(struct command* LHS, struct command* RHS)
     // Move LHS down the right side of the tree until 1 before the NULL value
     int i = 0;
 
-    struct command* LROOT = LHS;
+    struct command* LROOT = LHS; // marker for the root of the tree so we don't lose it
     int count = 0;
     while (LHS->u.command[1] != NULL) // Find the rightmost NULL node, usually just LHS
     {
@@ -403,12 +502,20 @@ struct command join(struct command* LHS, struct command* RHS)
             // Set the status to 1 for all nodes between LROOT and LHS
             // LHS->status = 1;
             LHS = LROOT;
-            for (i = 0; i < count; i++)
+            if (count == 0)
             {
                 LHS->status = 1;
-                LHS = LHS->u.command[1];
             }
-            return *RHS;
+            else
+            {
+                for (i = 0; i < count; i++)
+                {
+                    LHS->status = 1;
+                    LHS = LHS->u.command[1];
+                }
+            }
+
+            return RHS;
         }
         else
         {
@@ -422,7 +529,7 @@ struct command join(struct command* LHS, struct command* RHS)
                 LHS = LHS->u.command[1];
             }
             // return LHS;
-            return *LROOT;
+            return LROOT;
         }
     }
     // Else if it's just a simple command
@@ -438,12 +545,12 @@ struct command join(struct command* LHS, struct command* RHS)
                 LHS = LHS->u.command[1];
             }
         // return LHS;
-        return *LROOT;
+        return LROOT;
     }
     else // SUBSHELL COMMAND!
     {
         printf("Subshell command!\n");
-        return *LHS;
+        return LHS;
     }
 }
 
@@ -453,9 +560,6 @@ struct command join(struct command* LHS, struct command* RHS)
 // Because any command can continue onto the next line, and we're only reading one line at a time,
 // we're going to need access to the command stack and the operator stack 
 // OUTSIDE of this function, OUTSIDE of even the while !EOF loop
-// 
-// Shit, maybe even a command_stream_t needs to declare both stacks in itself,
-// yeah, that's good, I love it
 
 void parse(token_stream *ts, cmd_stack_struct* cmdstack, tok_stack_struct* opstack, command_t root)
 {   
@@ -486,11 +590,13 @@ void parse(token_stream *ts, cmd_stack_struct* cmdstack, tok_stack_struct* opsta
         if (is_simple(&tarray[ti]))
         {
             int z = 0;
+            // Initialize command
             cmd->u.word = (char**)checked_malloc(sizeof(char*)*maxsize);
             while(tarray[ti].type == WORD)
             {
                 // Word isn't being set properly
                 // cmd->u.word[z] = tarray[ti].data.word;
+                cmd->u.word[z] = checked_malloc(sizeof(char*));
                 strcpy(cmd->u.word[z], tarray[ti].data);
                 free(tarray[ti].data);
                 tarray[ti].data = NULL;
@@ -523,7 +629,7 @@ void parse(token_stream *ts, cmd_stack_struct* cmdstack, tok_stack_struct* opsta
             push_cmd(cmdstack, *cmd);
             // printf("Stack push_cmd!\n");
             // Free that command
-            free(cmd);
+            //free_cmd(cmd);
         }
         // Sequence command needs to know if there's anything after it
         else // if (is_op(&ts->tokarray[ti]))     // is an operator: &&, ||, |, ;
@@ -617,7 +723,7 @@ void parse(token_stream *ts, cmd_stack_struct* cmdstack, tok_stack_struct* opsta
                 }
 
                 push_cmd(cmdstack, *cmd);
-                free(cmd); // Free the command now that you've pushed its value onto the cmdstack
+                //free_cmd(cmd); // Free the command now that you've pushed its value onto the cmdstack
                 
                 // printf("tarray[%d] type is %d\n", ti, tarray[ti].type);
                 ti--;
@@ -686,10 +792,11 @@ command_stream_t make_command_stream (int (*get_next_byte) (void *),
         initialize_cmd(&cs->carray[i]);
     }
     cs->stream_index = 0;
-    initialize_cmd(&cs->waitingzone); // might need to change this line
+    cs->waitingzone = checked_malloc(sizeof(struct command));
+    initialize_cmd(cs->waitingzone); // might need to change this line
     cs->wi = 0;
     cs->timesread = 0;
-    cs->numcmds = 0;
+    // cs->numcmds = 0;
     cs->valid_syntax = 0; // -1 if bad, 0 if good
     cs->num_parentheses = 0;
 
@@ -764,7 +871,10 @@ command_stream_t make_command_stream (int (*get_next_byte) (void *),
             // Might need to initialize each individual token here
             for(i = 0; i < guess_num_tokens; i++)
             {
-                ts->tokarray[i].data = "";
+                // char* c = "initial";
+                // *(ts->tokarray[i].data) = *c;
+                // ts->tokarray[i].data = c;
+                ts->tokarray[i].data = checked_malloc(sizeof(char*));
                 ts->tokarray[i].type = INITIAL;
             }
             ts->size = 0;            
@@ -783,58 +893,62 @@ command_stream_t make_command_stream (int (*get_next_byte) (void *),
             //         // printf("%c\n", ts->tokarray[i].data.symbol);
             // }
             // // printf("Calling parser now\n");
-            
-            struct command* p_rootcommand = (command_t)checked_malloc(sizeof(struct command));
-            parse(ts, cmdstack, opstack, p_rootcommand); // PARSIFY!!!!
-            
-            // Now that we have the rootcommand*, we need to copy its values into an actual command
-            // and put that command in carray if it's complete.
-            struct command rootcommand = *p_rootcommand;
-
-            // Possibly free the token stream here:            
-            // free(ts->tokarray);
-            // free(ts);
-
-            // // printf("Parser exited!\n");
-            if (rootcommand.status == 1)
+            if (ts->size > 0)
             {
-                if (cs->stream_index >= commandcap)
-                {
-                    commandcap *= 2;
-                    cs->carray = checked_realloc(cs->carray, commandcap);
-                }
+                struct command* p_rootcommand = (command_t)checked_malloc(sizeof(struct command));
+                parse(ts, cmdstack, opstack, p_rootcommand); // PARSIFY!!!!
                 
-                if (cs->wi) // If there is a command waiting, join it!
+                // Now that we have the rootcommand*, we need to copy its values into an actual command
+                // and put that command in carray if it's complete.
+                // struct command rootcommand = *p_rootcommand;
+
+                // Possibly free the token stream here:            
+                // free(ts->tokarray);
+                // free(ts);
+
+                // // printf("Parser exited!\n");
+
+                if (p_rootcommand->status == 1)
                 {
-                    rootcommand = join(&cs->waitingzone, &rootcommand);
-                    cs->wi = 0;
+                    if (cs->stream_index >= commandcap)
+                    {
+                        commandcap *= 2;
+                        cs->carray = checked_realloc(cs->carray, commandcap);
+                    }
+                    
+                    if (cs->wi) // If there is a command waiting, join it!
+                    {
+                        p_rootcommand = join(cs->waitingzone, p_rootcommand);
+                        cs->wi = 0;
+                    }
+                    cs->carray[cs->stream_index] = *p_rootcommand;
+                    cs->stream_index++;
                 }
-                cs->carray[cs->stream_index] = rootcommand;
-                cs->stream_index++;
+                else // INCOMPLETE COMMAND: we should either stage it for waiting, or join it with
+                     // the thing that's currently waiting
+                {
+                    if (cs->wi) // If we're already waiting on something, join those two things
+                    {
+                        // printf("Joining\n");
+                        cs->waitingzone = join(cs->waitingzone, p_rootcommand);
+                        // join(&cs->waitingzone, &rootcommand);
+                        cs->wi = 1;
+                    }
+                    else // There's nothing to be waited on.
+                    {
+                        // printf("Add to waiting zone\n");
+                        cs->waitingzone = p_rootcommand;
+                        cs->wi = 1;
+                    }
+                }
+                // for (i = 0; i < char_count; i+d+)
+                // {
+                //     free(line[i]);
+                //     line[i] = NULL;
+                // }
+                free(line);
+                // free_token_stream(ts);
             }
-            else // INCOMPLETE COMMAND: we should either stage it for waiting, or join it with
-                 // the thing that's currently waiting
-            {
-                if (cs->wi) // If we're already waiting on something, join those two things
-                {
-                    // printf("Joining\n");
-                    cs->waitingzone = join(&cs->waitingzone, &rootcommand);
-                    cs->wi = 1;
-                }
-                else // There's nothing to be waited on.
-                {
-                    // printf("Add to waiting zone\n");
-                    cs->waitingzone = rootcommand;
-                    cs->wi = 1;
-                }
-            }
-            // for (i = 0; i < char_count; i++)
-            // {
-            //     free(line[i]);
-            //     line[i] = NULL;
-            // }
-            free(line);
-            // free_token_stream(ts);
         }
 
     }
@@ -842,16 +956,16 @@ command_stream_t make_command_stream (int (*get_next_byte) (void *),
     // then we're not actually waiting for anything, and we can add this command
     // to the next slot in carray.
     //
-    if (cs->waitingzone.type == SEQUENCE_COMMAND)
+    if (cs->waitingzone->type == SEQUENCE_COMMAND)
     {
         // Update the waiting zone to be the LHS
-        cs->waitingzone = *(cs->waitingzone.u.command[0]);
+        cs->waitingzone = cs->waitingzone->u.command[0];
         // Add it to the next slot in the array
-        cs->carray[cs->stream_index] = cs->waitingzone;
+        cs->carray[cs->stream_index] = *cs->waitingzone;
         cs->stream_index++;
     }
     // stream->timesread = 0;
-    // stream->numcmds = stream_index;
+    // cs->numcmds = stream_index;
     // free(stream->waitingzone);
     return cs;
 }
@@ -865,7 +979,17 @@ command_t read_command_stream (command_stream_t s)
     // the next command to be printed (in the tree like format).
 
     // Probably going to need to use recursion for subshells, but we'll see...
-    if (s->timesread >= s->numcmds)
+    // if the command in cs[i-1] IS a command, then free it and set it to NULL
+    if (s->timesread > 0)
+    {
+        if (s->carray[s->timesread - 1].type != NOT_A_COMMAND_YET)
+        {
+            //free_cmd(&s->carray[s->timesread - 1]);
+            // s->carray[s->timesread-1] = NULL;
+        }
+    }
+
+    if (s->timesread >= s->stream_index)
         return 0;
     
     command_t retvalue = &s->carray[s->timesread];

@@ -48,11 +48,11 @@ struct command_stream
     int stream_index;
     // command_t* waitingzone; // for incomplete commands
     // Better implementation of waiting zone is just one command
-    struct command waitingzone;
+    struct command* waitingzone;
     int wi; // waitingzone indicator, 1 if waiting, 0 if not waiting
     
     int timesread;
-    int numcmds; // number of commands in a stream
+    //int numcmds; // number of commands in a stream
     // int* hp; // highest priority in each line?? hp[0] = 5; hp[1] = 3;
 
     // For cases like
