@@ -964,6 +964,11 @@ command_stream_t make_command_stream (int (*get_next_byte) (void *),
         cs->carray[cs->stream_index] = *cs->waitingzone;
         cs->stream_index++;
     }
+    if (cs->stream_index == 0) // Don't return a command stream if there are no commands in it
+    {
+        fprintf(stderr, "Invalid syntax - no complete commands.\n");
+        exit(1);
+    }
     // stream->timesread = 0;
     // cs->numcmds = stream_index;
     // free(stream->waitingzone);
