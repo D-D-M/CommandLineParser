@@ -61,7 +61,7 @@ struct command_stream
 
     // To be used for checking syntax
     int valid_syntax; // -1 if bad, 0 if good
-    int num_parentheses; // balanced open and closed parentheses, ++ if ( and -- if )
+    // int num_parentheses; // balanced open and closed parentheses, ++ if ( and -- if )
                               // desired result should therefore be 0
 };
 /* **********************
@@ -86,7 +86,8 @@ enum token_type
     WORD,
     LOGICAND,
     LOGICOR, // && and ||
-    SUBSHELL,
+    OPEN_PAREN,
+    CLOSED_PAREN,
     COMMENT,
     I,
     O,
@@ -99,6 +100,7 @@ enum token_type
 
 typedef struct
 {
+    // int linenum; // A line number to keep track of where errors occur
     enum token_type type;
     char* data; // to hold what it actually is
     // union
@@ -110,6 +112,8 @@ typedef struct
 
 typedef struct
 {
+    int subshell_balance; // 0 if good syntax, nonzero if bad syntax
+    int linenum; // A line number to keep track of where errors occur
     token* tokarray;
     int size; // size of token array
 } token_stream;

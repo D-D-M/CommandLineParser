@@ -134,7 +134,7 @@ void tokenize(const char* line, const int linesize, token_stream* ts)
             {
                 if (line[c+1] == '<' && line[c+2] == '<')
                 {
-                    fprintf(stderr,"Invalid syntax\n");
+                    fprintf(stderr,"%d: Invalid syntax\n",ts->linenum);
                     exit(1);
                 }
             }
@@ -150,7 +150,7 @@ void tokenize(const char* line, const int linesize, token_stream* ts)
             {
                 if (line[c+1] == '>' && line[c+2] == '>')
                 {
-                    fprintf(stderr,"Invalid syntax\n");
+                    fprintf(stderr,"%d: Invalid syntax\n",ts->linenum);
                     exit(1);
                 }
             }
@@ -165,7 +165,7 @@ void tokenize(const char* line, const int linesize, token_stream* ts)
             {
                 if (line[c+1] == '|' && line[c+2] == '|')
                 {
-                    fprintf(stderr,"Invalid syntax\n");
+                    fprintf(stderr,"%d: Invalid syntax\n",ts->linenum);
                     exit(1);
                 }
             }
@@ -190,7 +190,7 @@ void tokenize(const char* line, const int linesize, token_stream* ts)
             {
                 if (line[c+1] == '&' && line[c+2] == '&')
                 {
-                    fprintf(stderr,"Invalid syntax\n");
+                    fprintf(stderr,"%d: Invalid syntax\n",ts->linenum);
                     exit(1);
                 }
             }
@@ -206,6 +206,7 @@ void tokenize(const char* line, const int linesize, token_stream* ts)
                 // Might want to consider:
                 // return;
                 // ^here instead, so that the command stream can be set to invalid
+                fprintf(stderr,"%d: Invalid syntax\n",ts->linenum);
                 exit(1); // Invalid syntax, do not support
             }
         }
@@ -215,10 +216,28 @@ void tokenize(const char* line, const int linesize, token_stream* ts)
             strcpy(ts->tokarray[ts->size].data, ";");
             c++; ts->size++;
         }
-        else if (line[c] == '(' || line[c] == ')')
+        else if (line[c] == '(')
         {   
-            ts->tokarray[ts->size].type = SUBSHELL;
-            strcpy(ts->tokarray[ts->size].data, &line[c]);
+            if ( (c+1)<linesize && line[c+1] == '(')
+            {
+                    fprintf(stderr,"%d: Invalid syntax\n",ts->linenum);
+                    exit(1);
+            }
+            ts->tokarray[ts->size].type = OPEN_PAREN;
+            strcpy(ts->tokarray[ts->size].data, "(");
+            ts->subshell_balance++;
+            c++; ts->size++;
+        }
+        else if (line[c] == ')')
+        {
+            if ( (c+1) < linesize && line[c+1] == ')')
+            {
+                    fprintf(stderr,"%d: Invalid syntax\n",ts->linenum);
+                    exit(1);
+            }
+            ts->tokarray[ts->size].type = CLOSED_PAREN;
+            strcpy(ts->tokarray[ts->size].data, ")");
+            ts->subshell_balance--;
             c++; ts->size++;
         }
         else if (line[c] == '\n')
@@ -233,7 +252,12 @@ void tokenize(const char* line, const int linesize, token_stream* ts)
         }
         else
         {
-            fprintf(stderr,"Invalid syntax, unsupported token %c\n", line[c]);
+            fprintf(stderr,"%d: Invalid syntax, unsupported token %c\n", ts->linenum, line[c]);
+            exit(1);
+        }
+        if (ts->subshell_balance < 0)
+        {
+            fprintf(stderr,"%d: Invalid syntax, unbalaned parentheses\n",ts->linenum);
             exit(1);
         }
     }
@@ -245,7 +269,7 @@ void tokenize(const char* line, const int linesize, token_stream* ts)
         ts->tokarray[0].type == I ||
         ts->tokarray[0].type == O )
     {
-        fprintf(stderr,"Invalid syntax, line cannot begin with %c \n",*ts->tokarray[0].data);
+        fprintf(stderr,"%d: Invalid syntax, line cannot begin with %c \n", ts->linenum, *ts->tokarray[0].data);
         exit(1);
     }
 
@@ -443,7 +467,7 @@ void parse_input(struct command* cmd, const token_stream* ts, cmd_stack_struct* 
     else // This means that < was the last character on a line, resulting in an error
     {
         cmd->status = -1;
-        fprintf(stderr,"Invalid syntax\n");//, line cannot end with < \n");
+        fprintf(stderr,"%d: Invalid syntax\n", ts->linenum);//, line cannot end with < \n");
         exit(1);
     }
     return;
@@ -464,7 +488,7 @@ void parse_output(struct command* cmd, const token_stream* ts, cmd_stack_struct*
     }
     else
     {
-        fprintf(stderr,"Invalid syntax\n");
+        fprintf(stderr,"%d: Invalid syntax\n", ts->linenum);
         exit(1);
     }
     return;
@@ -622,6 +646,12 @@ void parse(token_stream *ts, cmd_stack_struct* cmdstack, tok_stack_struct* opsta
                 cmd->status = 1; // Might need to comment this out, look at the idea you wrote
                 ti--;
             }
+            /*
+            else if (tarray[ti].type == OPEN_PAREN)
+            {
+                if
+            }
+            */
             else
                 ti--;
             cmd->type = SIMPLE_COMMAND;
@@ -798,7 +828,7 @@ command_stream_t make_command_stream (int (*get_next_byte) (void *),
     cs->timesread = 0;
     // cs->numcmds = 0;
     cs->valid_syntax = 0; // -1 if bad, 0 if good
-    cs->num_parentheses = 0;
+    // cs->num_parentheses = 0;
 
     
     // Initialize COMMAND STACK
@@ -818,11 +848,13 @@ command_stream_t make_command_stream (int (*get_next_byte) (void *),
     
     char byte = get_next_byte(get_next_byte_argument);
     // As long as we haven't reached the end of the file, keep getting the next character
+    int linecount = 1;
     while (byte != EOF)
     {
         if (byte == '\n')
         {
             byte = get_next_byte(get_next_byte_argument);
+            linecount++;
         }
         else
         {
@@ -876,10 +908,18 @@ command_stream_t make_command_stream (int (*get_next_byte) (void *),
                 // ts->tokarray[i].data = c;
                 ts->tokarray[i].data = checked_malloc(sizeof(char*));
                 ts->tokarray[i].type = INITIAL;
+                // ts->tokarray[i].linenum = linecount;
             }
-            ts->size = 0;            
+            ts->linenum = linecount;
+            ts->size = 0;           
+            ts->subshell_balance = 0; 
 
             tokenize(line, char_count, ts);
+            if (ts->subshell_balance != 0)
+            {
+                fprintf(stderr,"%d: Invalid syntax, unbalanced parentheses\n",ts->linenum);
+                exit(1);
+            }
             //// printf("Success!\n");
             // // printf("Testing: Print the tokenarray\n\n");
             // for (i = 0; i < ts->size; i++)
@@ -920,6 +960,7 @@ command_stream_t make_command_stream (int (*get_next_byte) (void *),
                     {
                         p_rootcommand = join(cs->waitingzone, p_rootcommand);
                         cs->wi = 0;
+                        // cs->waitingzone->type = NOT_A_COMMAND_YET;
                     }
                     cs->carray[cs->stream_index] = *p_rootcommand;
                     cs->stream_index++;
@@ -948,6 +989,7 @@ command_stream_t make_command_stream (int (*get_next_byte) (void *),
                 // }
                 free(line);
                 // free_token_stream(ts);
+                linecount++;
             }
         }
 
@@ -964,11 +1006,14 @@ command_stream_t make_command_stream (int (*get_next_byte) (void *),
         cs->carray[cs->stream_index] = *cs->waitingzone;
         cs->stream_index++;
     }
-    if (cs->stream_index == 0) // Don't return a command stream if there are no commands in it
+    // if (cs->stream_index == 0) // Don't return a command stream if there are no commands in it
+    if (cs->wi)
     {
-        fprintf(stderr, "Invalid syntax - no complete commands.\n");
+        fprintf(stderr, "%d: Invalid syntax - incomplete command(s).\n", linecount);
         exit(1);
     }
+
+
     // stream->timesread = 0;
     // cs->numcmds = stream_index;
     // free(stream->waitingzone);

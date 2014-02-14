@@ -26,6 +26,7 @@ int command_status (command_t c)
 
 void exe_simple(command_t c)
 {
+	/*
 	pid_t proc_id = fork();
 	int fd;
 	char **argv = c->u.word;	
@@ -56,9 +57,11 @@ void exe_simple(command_t c)
 	}
 	// this command has been executed 
 	c->exe = 1;
+	*/
 	return;
 }
 
+/*
 void exe_sequence(command_t c)
 {
 }
@@ -114,14 +117,12 @@ void exe_branch(command_t c)
 	   } 
 	}
 }
-
+*/
 void execute_command (command_t c, int time_travel)
 {
-  /* FIXME: Replace this with your implementation.  You may need to
-     add auxiliary functions and otherwise modify the source code.
-     You can also use external functions defined in the GNU C Library.  */
 
-	exe_branch(c);
+
+	//exe_branch(c);
 
 	//error (1, 0, "command execution not yet implemented");
 }

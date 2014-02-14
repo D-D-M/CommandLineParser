@@ -1,0 +1,2 @@
+cat < blah; (ls -l) || d
+
